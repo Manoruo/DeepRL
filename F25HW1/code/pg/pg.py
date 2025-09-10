@@ -75,6 +75,36 @@ class PolicyGradient(nn.Module):
     def train(self, states, actions, rewards):
         # train the agent using states, actions, and rewards
         # BEGIN STUDENT SOLUTION
+        states_tensor = torch.tensor(states, dtype=torch.float32).to(self.device)
+        actions_tensor = torch.tensor(actions, dtype=torch.int64).to(self.device)
+        rewards_tensor = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        num_steps = len(rewards)
+
+        if self.mode == "REINFORCE":
+            
+            # compute discounted rewards at each time step
+            G_t = []
+            for t in range(num_steps):
+                g = sum([self.gamma ** (k - t) * rewards[k] for k in range(t, num_steps)]) # compute G_t which is just a scalar the incorporates all the future discounted rewards starting from time step t until the end
+                G_t.append(g)
+            G_t = torch.tensor(G_t, dtype=torch.float32).to(self.device) # convert G_t to a tensor
+
+            # compute the probability of the actions taken given the states
+            policy_probs = self.forward(states_tensor)[0] # get the policy probabilities for all time steps
+            probs_taken = policy_probs.gather(1, actions_tensor.unsqueeze(1)).squeeze(1) # get the probabilities of the actions taken by using actions_tensor to index into policy_probs
+            log_probs = torch.log(probs_taken) # take the log of the policy probabilities
+
+            # compute the loss function and update the actor network 
+            loss = -torch.mean(log_probs * G_t) # compute the loss function
+            self.optimizer_actor.zero_grad() # zero the gradients
+            loss.backward() # backpropagate the loss
+            self.optimizer_actor.step() # update the actor network
+
+        elif self.mode == "REINFORCE_WITH_BASELINE":
+            pass
+        elif self.mode == "A2C":
+            pass 
+        
         # END STUDENT SOLUTION
         pass
 
@@ -83,6 +113,31 @@ class PolicyGradient(nn.Module):
 
         # run the agent through the environment num_episodes times for at most max steps
         # BEGIN STUDENT SOLUTION
+        for ep in range(num_episodes):
+            states, actions, rewards = [], [], []
+
+            state, _ = env.reset()
+            for step in range(max_steps):
+                action = self.get_action(state, stochastic=train)
+                next_state, reward, terminated, truncated, _ = env.step(action) 
+
+                # store state, action, reward
+                states.append(state)
+                actions.append(action)
+                rewards.append(reward)
+                
+                if terminated or truncated:
+                    break
+
+                # transition to next state
+                state = next_state
+            
+            # store total reward for this episode
+            total_rewards.append(sum(rewards))
+
+            if train:
+                self.train(states, actions, rewards)
+
         # END STUDENT SOLUTION
         return total_rewards
 
@@ -166,6 +221,27 @@ def main():
 
     # init args, agents, and call graph_agents on the initialized agents
     # BEGIN STUDENT SOLUTION
+    env = gym.make(args.env_name)
+    state_size = env.observation_space.shape[0]
+    action_size = env.action_space.n
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    mode = args.mode
+    n = args.n
+    agent = PolicyGradient(
+        state_size=state_size,
+        action_size=action_size,
+        mode=mode,
+        n=n,
+        device=device,
+    )
+
+    # TODO: come back and finish this
+    agent.run(
+        env=env,
+        max_steps=args.max_steps,
+        num_episodes=args.num_episodes,
+        train=True,
+    )
     # END STUDENT SOLUTION
 
 

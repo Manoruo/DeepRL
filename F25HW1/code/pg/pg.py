@@ -9,7 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
+import os
+os.makedirs("./graphs", exist_ok=True)
 
 class PolicyGradient(nn.Module):
     def __init__(

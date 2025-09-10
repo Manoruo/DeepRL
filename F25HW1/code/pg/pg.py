@@ -42,6 +42,7 @@ class PolicyGradient(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_layer_size, action_size),
             # BEGIN STUDENT SOLUTION
+            nn.Softmax(dim=-1),
             # END STUDENT SOLUTION
         )
 
@@ -55,6 +56,10 @@ class PolicyGradient(nn.Module):
 
         # initialize networks, optimizers, move networks to device
         # BEGIN STUDENT SOLUTION
+        self.actor.to(self.device)
+        self.critic.to(self.device)
+        self.optimizer_actor = optim.Adam(self.actor.parameters(), lr=lr_actor)
+        self.optimizer_critic = optim.Adam(self.critic.parameters(), lr=lr_critic)
         # END STUDENT SOLUTION
 
     def forward(self, state):
@@ -63,8 +68,27 @@ class PolicyGradient(nn.Module):
     def get_action(self, state, stochastic):
         # if stochastic, sample using the action probabilities, else get the argmax
         # BEGIN STUDENT SOLUTION
+        """
+        state: single state, shape [state_dim] or [1, state_dim]
+        stochastic: if True, sample from policy; if False, take argmax
+        """
+
+        state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)  # add batch dim so we can pass it through the network
+        policy_probs = self.forward(state_tensor)[0]  
+        policy_probs = policy_probs.squeeze(0) # remove added dimension
+
+        if stochastic:
+            # create a categorical distribution and sample
+            dist = torch.distributions.Categorical(probs=policy_probs)
+            action = dist.sample()
+        else:
+            # deterministic: pick the action with highest probability
+            action = torch.argmax(policy_probs)
+        
+        return action.item()  # return as Python int
+
         # END STUDENT SOLUTION
-        pass
+    
 
     def calculate_n_step_bootstrap(self, rewards_tensor, values):
         # calculate n step bootstrap
@@ -120,7 +144,6 @@ class PolicyGradient(nn.Module):
             for step in range(max_steps):
                 action = self.get_action(state, stochastic=train)
                 next_state, reward, terminated, truncated, _ = env.step(action) 
-
                 # store state, action, reward
                 states.append(state)
                 actions.append(action)
@@ -134,7 +157,7 @@ class PolicyGradient(nn.Module):
             
             # store total reward for this episode
             total_rewards.append(sum(rewards))
-
+            print(f"Episode {ep+1}/{num_episodes}, Total Reward: {total_rewards[-1]}")
             if train:
                 self.train(states, actions, rewards)
 
@@ -158,6 +181,31 @@ def graph_agents(
 
     # graph the data mentioned in the homework pdf
     # BEGIN STUDENT SOLUTION
+    num_trials = len(agents)
+    num_evals = num_episodes // graph_every
+    D = np.zeros((num_trials, num_evals)) 
+
+    for trial_idx, agent in enumerate(agents):
+        for eval_idx in range(num_evals):
+
+            # train the agent for graph_every episodes
+            agent.run(
+                env=env,
+                max_steps=max_steps,
+                num_episodes=graph_every,
+                train=True,
+            )
+
+            # test the agent for num_test_episodes episodes
+            total_rewards = agent.run(env=env, max_steps=max_steps, num_episodes=num_test_episodes, train=False)  # warm up run to avoid counting training episodes
+
+            avg_reward = np.mean(total_rewards)
+            D[trial_idx, eval_idx] = avg_reward
+
+    average_total_rewards = D.mean(axis=0)
+    min_total_rewards = D.min(axis=0)
+    max_total_rewards = D.max(axis=0)
+
     # END STUDENT SOLUTION
 
     # plot the total rewards
@@ -227,20 +275,24 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     mode = args.mode
     n = args.n
-    agent = PolicyGradient(
-        state_size=state_size,
-        action_size=action_size,
-        mode=mode,
-        n=n,
-        device=device,
-    )
-
-    # TODO: come back and finish this
-    agent.run(
+    agents = [
+        PolicyGradient(
+            state_size=state_size,
+            action_size=action_size,
+            mode=mode,
+            n=n,
+            device=device,
+        )
+        for _ in range(args.num_runs)
+    ]
+    graph_agents(
+        graph_name=f"PG_{mode}",
+        agents=agents,
         env=env,
         max_steps=args.max_steps,
         num_episodes=args.num_episodes,
-        train=True,
+        num_test_episodes=args.num_test_episodes,
+        graph_every=args.graph_every,
     )
     # END STUDENT SOLUTION
 

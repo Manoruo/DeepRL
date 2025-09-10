@@ -52,6 +52,7 @@ class PolicyGradient(nn.Module):
             nn.Linear(state_size, hidden_layer_size),
             nn.ReLU(),
             # BEGIN STUDENT SOLUTION
+            nn.Linear(hidden_layer_size, 1),
             # END STUDENT SOLUTION
         )
 
@@ -126,7 +127,33 @@ class PolicyGradient(nn.Module):
             self.optimizer_actor.step() # update the actor network
 
         elif self.mode == "REINFORCE_WITH_BASELINE":
-            pass
+            # compute discounted rewards at each time step
+            G_t = []
+            for t in range(num_steps):
+                g = sum([self.gamma ** (k - t) * rewards[k] for k in range(t, num_steps)]) # compute G_t which is just a scalar the incorporates all the future discounted rewards starting from time step t until the end
+                G_t.append(g)
+            G_t = torch.tensor(G_t, dtype=torch.float32).to(self.device) # convert G_t to a tensor
+
+            # compute the probability of the actions taken given the states
+            actor_probs, crtic_baseline = self.forward(states_tensor) # get the policy probabilities for all time steps
+            probs_taken = actor_probs.gather(1, actions_tensor.unsqueeze(1)).squeeze(1) # get the probabilities of the actions taken by using actions_tensor to index into policy_probs
+            log_probs = torch.log(probs_taken) # take the log of the policy probabilities
+
+            # compute the baseline values using the critic network
+            values = crtic_baseline.squeeze(1) # get the state values from the critic network
+
+            # compute the loss function and update the actor network 
+            loss = -torch.mean(log_probs * (G_t - values.detach())) # compute the loss function
+            self.optimizer_actor.zero_grad() # zero the gradients
+            loss.backward() # backpropagate the loss
+            self.optimizer_actor.step() # update the actor network
+
+            # update the critic network
+            critic_loss = F.mse_loss(values, G_t) # compute the mean squared error
+            self.optimizer_critic.zero_grad() # zero the gradients
+            critic_loss.backward() # backpropagate the loss
+            self.optimizer_critic.step() # update the critic network
+
         elif self.mode == "A2C":
             pass 
         
@@ -230,7 +257,7 @@ def parse_args():
     parser.add_argument(
         "--mode",
         type=str,
-        default="REINFORCE",
+        default="REINFORCE_WITH_BASELINE",
         choices=mode_choices,
         help="Mode to run the agent in",
     )

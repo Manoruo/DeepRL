@@ -95,8 +95,23 @@ class PolicyGradient(nn.Module):
     def calculate_n_step_bootstrap(self, rewards_tensor, values):
         # calculate n step bootstrap
         # BEGIN STUDENT SOLUTION
+        targets = torch.zeros_like(rewards_tensor).to(self.device)
+        T = len(rewards_tensor)
+        for t in range(T):
+
+            if t + self.n < T:
+                v_end = values[t + self.n]
+            else:
+                v_end = 0 # reached end of episode
+
+            # essentially, compute discounted reward from t to t+n-1 (its like TD for N steps). Then compute the value at N step and add it to the discounted reward 
+            g_t_base =  sum([self.gamma ** (k - t) * rewards_tensor[k] for k in range(t, min(t + self.n, T))]) # the original G_t up to t+n-1
+            v_end = (self.gamma ** self.n) * v_end
+            g_t = g_t_base + v_end 
+            targets[t] = g_t
+        return targets
         # END STUDENT SOLUTION
-        pass
+        
 
     def train(self, states, actions, rewards):
         # train the agent using states, actions, and rewards
@@ -155,7 +170,30 @@ class PolicyGradient(nn.Module):
             self.optimizer_critic.step() # update the critic network
 
         elif self.mode == "A2C":
-            pass 
+            
+            
+            # compute the probabilities of the actions taken given the states
+            actor_probs, crtic_baseline = self.forward(states_tensor) # get the policy probabilities for all time steps
+            probs_taken = actor_probs.gather(1, actions_tensor.unsqueeze(1)).squeeze(1) # get the probabilities of the actions taken by using actions_tensor to index into policy_probs
+            log_probs = torch.log(probs_taken) # take the log of the policy probabilities
+            
+            # compute n step boostrap targets / discounted rewards
+            values = crtic_baseline.squeeze(1) # get the state values from the critic network
+            G_t = self.calculate_n_step_bootstrap(rewards_tensor, values)
+
+            # compute the loss function and update the actor network 
+            advantage = (G_t - values).detach() # compute the advantage and prevents gradients from flowing to actor 
+            loss = -torch.mean(log_probs * advantage) # compute the loss function
+            self.optimizer_actor.zero_grad() # zero the gradients
+            loss.backward() # backpropagate the loss
+            self.optimizer_actor.step() # update the actor network
+
+            # update the critic network
+            critic_loss = F.mse_loss(values, G_t) # compute the mean squared error
+            self.optimizer_critic.zero_grad() # zero the gradients
+            critic_loss.backward() # backpropagate the loss
+            self.optimizer_critic.step() # update the critic network
+
         
         # END STUDENT SOLUTION
         pass
@@ -185,7 +223,7 @@ class PolicyGradient(nn.Module):
             
             # store total reward for this episode
             total_rewards.append(sum(rewards))
-            print(f"Episode {ep+1}/{num_episodes}, Total Reward: {total_rewards[-1]}")
+
             if train:
                 self.train(states, actions, rewards)
 
@@ -215,7 +253,7 @@ def graph_agents(
 
     for trial_idx, agent in enumerate(agents):
         for eval_idx in range(num_evals):
-
+            print(f"Trial {trial_idx+1}/{num_trials}, Eval {eval_idx+1}/{num_evals}")
             # train the agent for graph_every episodes
             agent.run(
                 env=env,

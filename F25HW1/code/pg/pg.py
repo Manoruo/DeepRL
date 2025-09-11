@@ -124,12 +124,14 @@ class PolicyGradient(nn.Module):
         if self.mode == "REINFORCE":
             
             # compute discounted rewards at each time step
-            G_t = []
-            for t in range(num_steps):
-                g = sum([self.gamma ** (k - t) * rewards[k] for k in range(t, num_steps)]) # compute G_t which is just a scalar the incorporates all the future discounted rewards starting from time step t until the end
-                G_t.append(g)
-            G_t = torch.tensor(G_t, dtype=torch.float32).to(self.device) # convert G_t to a tensor
+            G_t = torch.zeros(num_steps, dtype=torch.float32).to(self.device)
+            future_rewards = 0 # initialize future rewards to 0 (t=T)
 
+            # compute G_t in reverse order (more efficient and allows you to avoid recomputing future rewards multiple times)
+            for t in reversed(range(num_steps)):
+                future_rewards = rewards[t] + self.gamma * future_rewards
+                G_t[t] = future_rewards
+            
             # compute the probability of the actions taken given the states
             policy_probs = self.forward(states_tensor)[0] # get the policy probabilities for all time steps
             probs_taken = policy_probs.gather(1, actions_tensor.unsqueeze(1)).squeeze(1) # get the probabilities of the actions taken by using actions_tensor to index into policy_probs
@@ -142,12 +144,14 @@ class PolicyGradient(nn.Module):
             self.optimizer_actor.step() # update the actor network
 
         elif self.mode == "REINFORCE_WITH_BASELINE":
-            # compute discounted rewards at each time step
-            G_t = []
-            for t in range(num_steps):
-                g = sum([self.gamma ** (k - t) * rewards[k] for k in range(t, num_steps)]) # compute G_t which is just a scalar the incorporates all the future discounted rewards starting from time step t until the end
-                G_t.append(g)
-            G_t = torch.tensor(G_t, dtype=torch.float32).to(self.device) # convert G_t to a tensor
+           # compute discounted rewards at each time step
+            G_t = torch.zeros(num_steps, dtype=torch.float32).to(self.device)
+            future_rewards = 0 # initialize future rewards to 0 (t=T)
+
+            # compute G_t in reverse order (more efficient and allows you to avoid recomputing future rewards multiple times)
+            for t in reversed(range(num_steps)):
+                future_rewards = rewards[t] + self.gamma * future_rewards
+                G_t[t] = future_rewards
 
             # compute the probability of the actions taken given the states
             actor_probs, crtic_baseline = self.forward(states_tensor) # get the policy probabilities for all time steps
@@ -295,7 +299,7 @@ def parse_args():
     parser.add_argument(
         "--mode",
         type=str,
-        default="REINFORCE_WITH_BASELINE",
+        default="REINFORCE",
         choices=mode_choices,
         help="Mode to run the agent in",
     )

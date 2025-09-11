@@ -1,0 +1,14 @@
+
+
+
+1.4 For N step A2C to behave like REINFORCE with Baseline, just set N to be equal to T. All of these methods are policy gradient methods that increase the log probability of a given action to maximize the reward. If the baseline is equal to 0 then all of these methods become equivalent 
+
+1.5 Adding a baseline does help to improve the performance by reducing the varaince and allowing the model to converge quicker. This is because the baseline puts more "blame" on actions that directly contribute to larger rewards, while in REINFORCE as long as a trajectory leads to a reward you REINFORCE that action. This in turn leads to "bad" or unhelp actions being reinforced, but baseline addresses this problem.
+
+
+2.1
+2.2 False, Q learning must explore during training to find optimal states. If it were to just greedly follow the policy over the computed Q Function it could get stuck in a suboptimal trajectory and not maximize reward. 
+2.3 True * - the value function just tells you how good a state is. The optimal policy can still negatively rate a given state if its not optimal, resulting in another suboptimal policy giving that same state a higher value.
+2.4 - False. You can optimize discrete actions using softmax
+2.5 - False. Q learning uses epsilon-greedy to explore.
+2.6 Only the first statement is true. action 1 is better than action 2, so switching to it would directly improve our policy. We cannot know if it will decrease other states, neither do we know if this will yield an optimal policy if there are other states

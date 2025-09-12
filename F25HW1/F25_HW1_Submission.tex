@@ -170,8 +170,8 @@ Andrew ID 3: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt
 % YOUR SOLUTION
 N-step A2C, REINFORCE, and REINFORCE with baseline are all policy gradient methods that update the policy to increase the probability of actions leading to higher returns. 
 \begin{itemize}
-    \item \textbf{N-step A2C $\rightarrow$ REINFORCE with baseline:} when $n=T$, i.e., the return is computed over the entire episode (full-horizon), so no bootstrapping is used.
-    \item \textbf{N-step A2C or REINFORCE with baseline $\rightarrow$ REINFORCE:} if the baseline $V(s_t)$ is zero (or not used), then both reduce to plain REINFORCE.
+    \item \textbf{N-step A2C $=$ REINFORCE with baseline:} when $n=T$, i.e., the return is computed over the entire episode (full-horizon), so no bootstrapping is used.
+    \item \textbf{N-step A2C or REINFORCE with baseline $=$ REINFORCE:} if the baseline $V(s_t)$ is zero (or not used), then both reduce to plain REINFORCE.
 \end{itemize}
 
 \end{solution}
@@ -195,22 +195,23 @@ reducing noise and improving learning efficiency.
 \section*{2 Question Answering (12 pts)}
 \begin{enumerate}
     \item \noindent\begin{solution}[height=5cm] 
+    False - SARSA learns the Q-values based on the actions actually taken by the current policy (which includes exploration), while Q-learning learns the Q-values as if the agent always takes the best possible action (greedy), so they converge to different Q-functions.
     \end{solution}
 
     \item \noindent\begin{solution}[height=5cm]
-        False. Q-learning requires exploration during training to discover optimal actions in all states. If it only follows the greedy policy over the current Q function, it may get stuck in suboptimal trajectories and fail to maximize long-term rewards.
+        False - Q learning requires exploration during training to discover optimal actions in all states. If it only follows the greedy policy over the current Q function, it may get stuck in suboptimal trajectories and fail to maximize long-term rewards.
     \end{solution}
 
     \item \noindent\begin{solution}[height=5cm]
-    False. By definition, $v^{\pi^*}(s)$ is the value under the optimal policy, which is always at least as large as the value under any other policy. No policy can have a higher value at a state than the optimal policy.
+    False. By definition, \(v_{\pi^*}(s) \geq v_{\pi}(s)\) for all states \(s\), since the optimal policy achieves the maximum possible value.
     \end{solution}
 
     \item \noindent\begin{solution}[height=5cm]
-    False. Actor-critic methods can optimize policies over discrete actions using a parameterized policy, such as a softmax output to represent action probabilities.
+    False - Actor-critic methods can optimize policies over discrete actions using a parameterized policy, such as a softmax output to represent action probabilities.
     \end{solution}
 
     \item \noindent\begin{solution}[height=5cm]
-    False. Actor-critic methods typically use stochastic policies (e.g., softmax) to explore, rather than epsilon-greedy, which is primarily used in Q-learning.
+    False - Actor-critic methods typically use stochastic policies (softmax) to explore, rather than epsilon-greedy, which is primarily used in Q-learning.
     \end{solution}
 
     \item \noindent\begin{solution}[height=5cm]

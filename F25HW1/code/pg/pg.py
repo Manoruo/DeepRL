@@ -143,7 +143,7 @@ class PolicyGradient(nn.Module):
             loss.backward() # backpropagate the loss
             self.optimizer_actor.step() # update the actor network
 
-        elif self.mode == "REINFORCE_WITH_BASELINE":
+        elif self.mode == "REINFORCE_WITH_BASELINE": # Also called Monte Carlo A2C 
            # compute discounted rewards at each time step
             G_t = torch.zeros(num_steps, dtype=torch.float32).to(self.device)
             future_rewards = 0 # initialize future rewards to 0 (t=T)
@@ -173,7 +173,7 @@ class PolicyGradient(nn.Module):
             critic_loss.backward() # backpropagate the loss
             self.optimizer_critic.step() # update the critic network
 
-        elif self.mode == "A2C":
+        elif self.mode == "A2C": # Also called TD A2C
             
             
             # compute the probabilities of the actions taken given the states

@@ -1,4 +1,4 @@
-w#! python3
+#! python3
 
 import argparse
 import collections
@@ -12,6 +12,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+import os
+os.makedirs('./graphs', exist_ok=True)
 
 
 class ReplayMemory():
@@ -19,23 +21,26 @@ class ReplayMemory():
         # define init params
         # use collections.deque
         # BEGIN STUDENT SOLUTION
-        # END STUDENT SOLUTION
-        pass
+        self.queue = collections.deque(maxlen=memory_size)
+        self.batch_size = batch_size
+        # END STUDENT SOLUTION  
 
-
+    def __len__(self):
+        return len(self.queue)
+    
     def sample_batch(self):
         # randomly chooses from the collections.deque
         # BEGIN STUDENT SOLUTION
+        batch = [random.choice(self.queue) for _ in range(self.batch_size)]
         # END STUDENT SOLUTION
-        pass
+        return batch
 
 
     def append(self, transition):
         # append to the collections.deque
         # BEGIN STUDENT SOLUTION
+        self.queue.append(transition)
         # END STUDENT SOLUTION
-        pass
-
 
 
 class DeepQNetwork(nn.Module):
@@ -63,11 +68,23 @@ class DeepQNetwork(nn.Module):
             nn.Linear(state_size, hidden_layer_size),
             nn.ReLU(),
             # BEGIN STUDENT SOLUTION
+            nn.Linear(hidden_layer_size, hidden_layer_size), # Q values can be negative, use just linear layer
+            nn.ReLU(),
+            nn.Linear (hidden_layer_size, action_size)
             # END STUDENT SOLUTION
         )
 
         # initialize replay buffer, networks, optimizer, move networks to device
         # BEGIN STUDENT SOLUTION
+        self.q_net = q_net_init()
+        self.target_net = q_net_init()
+
+        self.buffer = ReplayMemory(replay_buffer_size, replay_buffer_batch_size)
+
+        self.optimizer_q = optim.Adam(self.q_net.parameters(), lr=lr_q_net)
+        self.optimizer_target_q = optim.Adam(self.target_net.parameters(), lr=lr_q_net)
+        self.q_net.to(device)
+        
         # END STUDENT SOLUTION
 
 
@@ -75,15 +92,160 @@ class DeepQNetwork(nn.Module):
         # calculate q value and target
         # use the correct network for the target based on self.double_dqn
         # BEGIN STUDENT SOLUTION
-        # END STUDENT SOLUTION
+        if self.double_dqn:
+            targets = self.target_net(new_state) # Use the target network to predict the next state's q values
+        else:
+            targets = self.q_net(new_state) # Use the current policy to predict the next state's q values 
 
+        q_values = self.q_net(state)
+        # END STUDENT SOLUTION
+        return q_values, targets
 
     def get_action(self, state, stochastic):
         # if stochastic, sample using epsilon greedy, else get the argmax
         # BEGIN STUDENT SOLUTION
-        # END STUDENT SOLUTION
-        pass
+        
+        # Convert state to tensor with batch dimension
+        state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.device)
+    
+        # Get Q-values for the state
+        q_values, _ = self.forward(state_tensor, state_tensor)  # new_state ignored for single step
 
+        # Epsilon-greedy: random action with probability epsilon
+        if stochastic and np.random.rand() < self.epsilon:
+            return np.random.randint(0, self.action_size)
+
+        # Otherwise, choose the action with highest Q-value
+        action = torch.argmax(q_values, dim=-1).item()
+        return action
+    
+        # END STUDENT SOLUTION
+        
+
+    def train(self, batch):
+        # train the agent using states, actions, and rewards
+        # BEGIN STUDENT SOLUTION
+
+        states, actions, rewards, new_states, terminated = zip(*batch)
+
+        states_tensor = torch.tensor(states, dtype=torch.float32).to(self.device)
+        actions_tensor = torch.tensor(actions, dtype=torch.int64).to(self.device)
+        rewards_tensor = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        new_states_tensor = torch.tensor(new_states, dtype=torch.float32).to(self.device)
+        terminated = torch.tensor(terminated, dtype=torch.float32).to(self.device)
+        
+        num_steps = len(rewards)
+
+        # Note for each state this gets us the Q value for every possible action
+        q_values, target_values = self.forward(states_tensor, new_states_tensor)
+        
+        # For the target values, we just want the max Q value. This is comptued for the "new states"
+        max_targets = torch.max(target_values, dim=-1)[0] # index [0] to get values not indicies
+        yi = rewards_tensor + self.gamma * max_targets * (1 - terminated)
+        
+        # Remember the Q value we care about is for the associated actions we took
+        relevant_q_values = q_values.gather(1, actions_tensor.unsqueeze(1)).squeeze(1) # Just get the q values for the actions we actually took
+        loss = F.mse_loss(relevant_q_values, yi)
+
+        # back prop
+        self.optimizer_q.zero_grad()
+        loss.backward()
+        self.optimizer_q.step()
+
+        # END STUDENT SOLUTION
+
+    def do_burn_in(self, env):
+        # Collect multiple transitions --> One long episode
+        # Init Replay Buffer 
+
+
+        while len(self.buffer) < self.burn_in:
+           
+            state, _ = env.reset()
+
+            # Use Uniform random policy
+            action = self.get_action(state, stochastic=True)
+            next_state, reward, terminated, truncated, _ = env.step(action) 
+
+            # Store State action Reward
+            self.buffer.append([state, action, reward, next_state, terminated or truncated])
+
+            # transition to next state
+            state = next_state
+        
+            if terminated or truncated:
+                state, _ = env.reset()
+        return
+
+    def test_curr_policy(self, env, num_episodes, max_steps):
+        reward_per_episode = []
+
+        # Run the policy for e episodes and evaluate the reward
+        for ep in range(num_episodes):
+            state, _ = env.reset()
+            total_ep_reward = 0 
+            for t in range(max_steps):
+                action = self.get_action(state, stochastic=False)
+                next_state, reward, terminated, truncated, _ = env.step(action) 
+                state = next_state
+                total_ep_reward += reward
+                
+                if terminated or truncated:
+                    break 
+            
+            reward_per_episode.append(total_ep_reward)
+        
+        mean_undiscounted_return = np.mean(np.array(reward_per_episode))
+        return mean_undiscounted_return
+            
+
+
+    def run(self, env, max_steps, num_episodes, test_every):
+        total_rewards = []
+
+        # run the agent through the environment num_episodes times for at most max steps
+        # BEGIN STUDENT SOLUTION
+        
+        # Collect trials
+        self.do_burn_in(env)
+
+        # Collect a bunch of experience
+        for ep in range(num_episodes):
+         
+            test_trial = ep % test_every == 0
+
+            # Evaluate if necessary
+            if test_trial:
+                eval_episodes = 20 # Per hw
+                mean_undiscounted_return = self.test_curr_policy(env, eval_episodes, max_steps)
+                print(f"Trial {ep // test_every} | Reward {mean_undiscounted_return}")
+                total_rewards.append(mean_undiscounted_return)
+
+            # Collect more trainsitions/steps and train our policy
+            state, _ = env.reset()
+            for step in range(max_steps):
+
+                # Take action from policy or eps-greedy 
+                action = self.get_action(state, stochastic=True)
+                next_state, reward, terminated, truncated, _ = env.step(action) 
+
+                # Store State action Reward
+                self.buffer.append([state, action, reward, next_state, terminated or truncated])
+
+                # transition to next state
+                state = next_state
+                
+                if terminated or truncated:
+                    break
+
+                # train if burn is is reached 
+                if len(self.buffer) >= self.burn_in:
+                    random_batch = self.buffer.sample_batch()
+                    self.train(random_batch)
+
+        # END STUDENT SOLUTION
+        return total_rewards 
+    
 
 
 def graph_agents(
@@ -93,6 +255,14 @@ def graph_agents(
 
     # graph the data mentioned in the homework pdf
     # BEGIN STUDENT SOLUTION
+    
+    D = np.array(mean_undiscounted_returns)  # shape: [num_runs, num_checkpoints]
+    print(D.shape)
+    # Compute stats across runs
+    average_total_rewards = D.mean(axis=0)
+    min_total_rewards = D.min(axis=0)
+    max_total_rewards = D.max(axis=0)
+
     # END STUDENT SOLUTION
 
     # plot the total rewards
@@ -132,6 +302,50 @@ def main():
 
     # init args, agents, and call graph_agent on the initialized agents
     # BEGIN STUDENT SOLUTION
+
+    env_name = args.env_name
+    num_runs = args.num_runs
+    num_episodes = args.num_episodes
+    max_steps = args.max_steps
+    test_frequency = args.test_frequency
+    double_dqn = args.double_dqn
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    D = [] # matrix of results
+
+    for run_idx in range(num_runs):
+        print(f"\n=== Starting run {run_idx+1}/{num_runs} ===")
+        env = gym.make(env_name)
+        state_size = env.observation_space.shape[0]
+        action_size = env.action_space.n
+
+        # Initialize agent
+        agent = DeepQNetwork(
+            state_size=state_size,
+            action_size=action_size,
+            double_dqn=double_dqn,
+            device=device
+        )
+
+        # Train agent
+        rewards = agent.run(env, max_steps=max_steps,
+                             num_episodes=num_episodes, 
+                             test_every=test_frequency)
+        D.append(rewards)
+
+        env.close()
+
+    # Graph results using D
+    graph_agents(
+        graph_name=f"{env_name}_DQN",
+        mean_undiscounted_returns=D,  
+        test_frequency=test_frequency,
+        max_steps=max_steps,
+        num_episodes=num_episodes
+    )
+
+    # Graph the results
     # END STUDENT SOLUTION
 
 

@@ -31,7 +31,7 @@ class ReplayMemory():
     def sample_batch(self):
         # randomly chooses from the collections.deque
         # BEGIN STUDENT SOLUTION
-        batch = [random.choice(self.queue) for _ in range(self.batch_size)]
+        batch = random.sample(self.queue, self.batch_size)
         # END STUDENT SOLUTION
         return batch
 
@@ -70,7 +70,7 @@ class DeepQNetwork(nn.Module):
             # BEGIN STUDENT SOLUTION
             nn.Linear(hidden_layer_size, hidden_layer_size), # Q values can be negative, use just linear layer
             nn.ReLU(),
-            nn.Linear (hidden_layer_size, action_size)
+            nn.Linear(hidden_layer_size, self.action_size)
             # END STUDENT SOLUTION
         )
 
@@ -79,11 +79,12 @@ class DeepQNetwork(nn.Module):
         self.q_net = q_net_init()
         self.target_net = q_net_init()
 
-        self.buffer = ReplayMemory(replay_buffer_size, replay_buffer_batch_size)
-
-        self.optimizer_q = optim.Adam(self.q_net.parameters(), lr=lr_q_net)
-        self.optimizer_target_q = optim.Adam(self.target_net.parameters(), lr=lr_q_net)
         self.q_net.to(device)
+        self.target_net.to(device)
+
+        self.buffer = ReplayMemory(replay_buffer_size, replay_buffer_batch_size)
+        self.optimizer_q = optim.Adam(self.q_net.parameters(), lr=lr_q_net)
+       
         
         # END STUDENT SOLUTION
 
@@ -137,16 +138,24 @@ class DeepQNetwork(nn.Module):
         num_steps = len(rewards)
 
         # Note for each state this gets us the Q value for every possible action
-        q_values, target_values = self.forward(states_tensor, new_states_tensor)
+        q_values, target_values = self.forward(states_tensor, new_states_tensor) # The second output is from a "Target" network
         
-        # For the target values, we just want the max Q value. This is comptued for the "new states"
-        max_targets = torch.max(target_values, dim=-1)[0] # index [0] to get values not indicies
-        yi = rewards_tensor + self.gamma * max_targets * (1 - terminated)
-        
+        if self.double_dqn:
+            
+            best_action = torch.argmax(q_values, dim=-1) # use our online network to predict best actions
+            eval_actions = target_values.gather(1, best_action.unsqueeze(1)).squeeze(1)
+            
+            yi = rewards_tensor + self.gamma * eval_actions * (1 - terminated)
+
+        else:
+            # For the target values, we just want the max Q value. This is comptued for the "new states"
+            max_targets = torch.max(target_values, dim=-1)[0] # index [0] to get values not indicies
+            yi = rewards_tensor + self.gamma * max_targets * (1 - terminated)
+            
         # Remember the Q value we care about is for the associated actions we took
         relevant_q_values = q_values.gather(1, actions_tensor.unsqueeze(1)).squeeze(1) # Just get the q values for the actions we actually took
         loss = F.mse_loss(relevant_q_values, yi)
-
+        
         # back prop
         self.optimizer_q.zero_grad()
         loss.backward()
@@ -211,15 +220,20 @@ class DeepQNetwork(nn.Module):
 
         # Collect a bunch of experience
         for ep in range(num_episodes):
-         
+            
+            # Establish if we should test this episode 
             test_trial = ep % test_every == 0
 
-            # Evaluate if necessary
+            # Test if necessary
             if test_trial:
                 eval_episodes = 20 # Per hw
                 mean_undiscounted_return = self.test_curr_policy(env, eval_episodes, max_steps)
                 print(f"Trial {ep // test_every} | Reward {mean_undiscounted_return}")
                 total_rewards.append(mean_undiscounted_return)
+
+            # Update target network periodically
+            if ep % self.target_update == 0:
+                self.target_net.load_state_dict(self.q_net.state_dict())
 
             # Collect more trainsitions/steps and train our policy
             state, _ = env.reset()
@@ -311,7 +325,7 @@ def main():
     double_dqn = args.double_dqn
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+    print(device)
     D = [] # matrix of results
 
     for run_idx in range(num_runs):
@@ -337,8 +351,9 @@ def main():
         env.close()
 
     # Graph results using D
+    name = f"{env_name}_DDQN" if double_dqn else f"{env_name}_DQN"
     graph_agents(
-        graph_name=f"{env_name}_DQN",
+        graph_name=name,
         mean_undiscounted_returns=D,  
         test_frequency=test_frequency,
         max_steps=max_steps,
@@ -350,6 +365,6 @@ def main():
 
 
 
-if '__main__' == __name__:
+if __name__ == '__main__':
     main()
 

@@ -31,7 +31,7 @@ class ReplayMemory():
     def sample_batch(self):
         # randomly chooses from the collections.deque
         # BEGIN STUDENT SOLUTION
-        batch = random.sample(self.queue, self.batch_size)
+        batch = [random.choice(self.queue) for _ in range(self.batch_size)] # sample with replacement
         # END STUDENT SOLUTION
         return batch
 
@@ -68,9 +68,7 @@ class DeepQNetwork(nn.Module):
             nn.Linear(state_size, hidden_layer_size),
             nn.ReLU(),
             # BEGIN STUDENT SOLUTION
-            nn.Linear(hidden_layer_size, hidden_layer_size), # Q values can be negative, use just linear layer
-            nn.ReLU(),
-            nn.Linear(hidden_layer_size, self.action_size)
+            nn.Linear(hidden_layer_size, self.action_size), # Q values can be negative, use just linear layer
             # END STUDENT SOLUTION
         )
 
@@ -93,14 +91,16 @@ class DeepQNetwork(nn.Module):
         # calculate q value and target
         # use the correct network for the target based on self.double_dqn
         # BEGIN STUDENT SOLUTION
-        if self.double_dqn:
-            targets = self.target_net(new_state) # Use the target network to predict the next state's q values
-        else:
-            targets = self.q_net(new_state) # Use the current policy to predict the next state's q values 
-
+        
         q_values = self.q_net(state)
+
+        # Target Q-values for next states (no gradient needed)
+        with torch.no_grad():
+            target_q_values = self.target_net(new_state)
+
+        return q_values, target_q_values
         # END STUDENT SOLUTION
-        return q_values, targets
+       
 
     def get_action(self, state, stochastic):
         # if stochastic, sample using epsilon greedy, else get the argmax
@@ -127,53 +127,51 @@ class DeepQNetwork(nn.Module):
         # train the agent using states, actions, and rewards
         # BEGIN STUDENT SOLUTION
 
+        # Unpack the batch
         states, actions, rewards, new_states, terminated = zip(*batch)
 
         states_tensor = torch.tensor(states, dtype=torch.float32).to(self.device)
         actions_tensor = torch.tensor(actions, dtype=torch.int64).to(self.device)
         rewards_tensor = torch.tensor(rewards, dtype=torch.float32).to(self.device)
         new_states_tensor = torch.tensor(new_states, dtype=torch.float32).to(self.device)
-        terminated = torch.tensor(terminated, dtype=torch.float32).to(self.device)
-        
-        num_steps = len(rewards)
+        terminated_tensor = torch.tensor(terminated, dtype=torch.float32).to(self.device)
 
-        # Note for each state this gets us the Q value for every possible action
-        q_values, target_values = self.forward(states_tensor, new_states_tensor) # The second output is from a "Target" network
-        
-        if self.double_dqn:
-            
-            best_action = torch.argmax(q_values, dim=-1) # use our online network to predict best actions
-            eval_actions = target_values.gather(1, best_action.unsqueeze(1)).squeeze(1)
-            
-            yi = rewards_tensor + self.gamma * eval_actions * (1 - terminated)
+        # Forward pass (get q values and target values)
+        q_values, target_q_values = self.forward(states_tensor, new_states_tensor)
 
-        else:
-            # For the target values, we just want the max Q value. This is comptued for the "new states"
-            max_targets = torch.max(target_values, dim=-1)[0] # index [0] to get values not indicies
-            yi = rewards_tensor + self.gamma * max_targets * (1 - terminated)
-            
-        # Remember the Q value we care about is for the associated actions we took
-        relevant_q_values = q_values.gather(1, actions_tensor.unsqueeze(1)).squeeze(1) # Just get the q values for the actions we actually took
+        # Compute targets (Double DQN vs DQN)
+        with torch.no_grad():
+            if self.double_dqn:
+                # Use online network to pick the best next action
+                best_actions = torch.argmax(q_values, dim=-1)
+                next_q = target_q_values.gather(1, best_actions.unsqueeze(1)).squeeze(1)
+            else:
+                # Regular DQN: take max Q-value from target network
+                next_q = torch.max(target_q_values, dim=-1)[0]
+
+            yi = rewards_tensor + self.gamma * next_q * (1 - terminated_tensor)
+
+        # Select q-values corresponding to the actions we actually took
+        relevant_q_values = q_values.gather(1, actions_tensor.unsqueeze(1)).squeeze(1)
+
+        # Compute MSE loss
         loss = F.mse_loss(relevant_q_values, yi)
-        
-        # back prop
+
+        # Backprop
         self.optimizer_q.zero_grad()
         loss.backward()
         self.optimizer_q.step()
-
         # END STUDENT SOLUTION
 
     def do_burn_in(self, env):
         # Collect multiple transitions --> One long episode
         # Init Replay Buffer 
-
-
         while len(self.buffer) < self.burn_in:
            
             state, _ = env.reset()
 
-            # Use Uniform random policy
-            action = self.get_action(state, stochastic=True)
+            # Use Uniform random policy so its not bias to our current policy
+            action =np.random.randint(0, self.action_size)
             next_state, reward, terminated, truncated, _ = env.step(action) 
 
             # Store State action Reward
@@ -187,9 +185,8 @@ class DeepQNetwork(nn.Module):
         return
 
     def test_curr_policy(self, env, num_episodes, max_steps):
+        # Run the "frozen" policy for e episodes and evaluate the reward
         reward_per_episode = []
-
-        # Run the policy for e episodes and evaluate the reward
         for ep in range(num_episodes):
             state, _ = env.reset()
             total_ep_reward = 0 
@@ -228,10 +225,10 @@ class DeepQNetwork(nn.Module):
             if test_trial:
                 eval_episodes = 20 # Per hw
                 mean_undiscounted_return = self.test_curr_policy(env, eval_episodes, max_steps)
-                print(f"Trial {ep // test_every} | Reward {mean_undiscounted_return}")
+                print(f"Ep {ep} | Trial {ep // test_every} | Reward {mean_undiscounted_return}")
                 total_rewards.append(mean_undiscounted_return)
 
-            # Update target network periodically
+            # Update target network periodically (every x episodes)
             if ep % self.target_update == 0:
                 self.target_net.load_state_dict(self.q_net.state_dict())
 
@@ -252,10 +249,9 @@ class DeepQNetwork(nn.Module):
                 if terminated or truncated:
                     break
 
-                # train if burn is is reached 
-                if len(self.buffer) >= self.burn_in:
-                    random_batch = self.buffer.sample_batch()
-                    self.train(random_batch)
+                # train, burn in should be reached already
+                random_batch = self.buffer.sample_batch()
+                self.train(random_batch)
 
         # END STUDENT SOLUTION
         return total_rewards 

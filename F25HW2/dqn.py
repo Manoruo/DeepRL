@@ -91,7 +91,8 @@ class DeepQNetwork(nn.Module):
         # calculate q value and target
         # use the correct network for the target based on self.double_dqn
         # BEGIN STUDENT SOLUTION
-        
+        # NOTE: This was wrong for me before. 
+        # You should always have a seperate net /delayed for q_values and target. Having one "Frozen" version is important to ensure stability. Otherwise you need many more samples
         q_values = self.q_net(state)
 
         # Target Q-values for next states (no gradient needed)
@@ -170,7 +171,7 @@ class DeepQNetwork(nn.Module):
            
             state, _ = env.reset()
 
-            # Use Uniform random policy so its not bias to our current policy
+            # Use Uniform random policy so its not bias to our current policy. NOTE: I was sampling from the policy using e-greedy. But this biases our burn in to be policy actions. Not good.
             action =np.random.randint(0, self.action_size)
             next_state, reward, terminated, truncated, _ = env.step(action) 
 

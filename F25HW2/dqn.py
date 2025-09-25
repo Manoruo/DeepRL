@@ -143,9 +143,11 @@ class DeepQNetwork(nn.Module):
         # Compute targets (Double DQN vs DQN)
         with torch.no_grad():
             if self.double_dqn:
-                # Use online network to pick the best next action
-                best_actions = torch.argmax(q_values, dim=-1)
-                next_q = target_q_values.gather(1, best_actions.unsqueeze(1)).squeeze(1)
+                # Use online network to pick the best next action (You should take the q values from our online network at the next state and then do arg max on that so our online network is responsible for action selection)
+                # Online network selects the best action for next states
+                online_next_q = self.q_net(new_states_tensor)
+                best_actions = torch.argmax(online_next_q, dim=-1) 
+                next_q = target_q_values.gather(1, best_actions.unsqueeze(1)).squeeze(1) # target network evaluates this action
             else:
                 # Regular DQN: take max Q-value from target network
                 next_q = torch.max(target_q_values, dim=-1)[0]

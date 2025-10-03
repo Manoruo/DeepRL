@@ -75,6 +75,25 @@ class PPOAgent:
         ret = {}
         # ---------------- Problem 1.3.1: PPO Update ----------------
         ### BEGIN STUDENT SOLUTION - 1.3.1 ###
+        if stop and self._steps_collected_with_curr_policy >= self.rollout_steps:
+            # Compute GAE and returns
+            advantages, returns = self._compute_gae(self._curr_policy_rollout)
+
+            # Prepare batch and store in rollout buffer
+            batch = self._prepare_batch(advantages, returns)
+
+            # Add to rollout buffer
+            self._rollout_buffer.add(batch)
+
+            # Reset current rollout
+            self._curr_policy_rollout = []
+            self._steps_collected_with_curr_policy = 0
+            self._policy_iteration += 1
+        
+        # Perform PPO update
+        if self._rollout_buffer.size > 0:
+            stats = self._perform_update()
+            ret.update(stats)
 
         ### END STUDENT SOLUTION - 1.3.1 ###
 
@@ -91,6 +110,31 @@ class PPOAgent:
         # ---------------- Problem 1.3.2: PPO Update ----------------
         ### BEGIN STUDENT SOLUTION - 1.3.2 ###
 
+        # Sample minibatches and perform updates
+        for epoch in range(self.update_epochs):
+
+            # Shuffle and create minibatch
+            minibatch = self._rollout_buffer.sample(
+                self.minibatch_size,
+                filter={"iteration": [self._policy_iteration]}
+            )
+
+            # Normalize advantages (improves stability)
+            advantages = minibatch["advantages"]
+            norm_adv = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            minibatch["advantages"] = norm_adv # replace with normalized advantages
+
+            # Compute loss and perform gradient step
+            loss, stats = self._ppo_loss(minibatch)
+            all_stats.append(stats)
+            self.optimizer.zero_grad()
+            loss.backward()
+
+            # Gradient clipping for stability (even though surrogate clips, advantage can still be huge)
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+            self.optimizer.step()
+
+          # Ensure buffer is ready
         ### EXPERIMENT 1.6 CODE ###
 
         ### EXPERIMENT 1.6 CODE END ###
@@ -125,7 +169,20 @@ class PPOAgent:
 
         # ---------------- Problem 1.2: Compute GAE ----------------
         ### BEGIN STUDENT SOLUTION - 1.2 ###
-        
+        A_GAE = 0
+        for t in reversed(range(T)): 
+            if t == T - 1:
+                # if last step, use final_v 
+                next_value = final_v
+                next_non_terminal = 1.0 - dones[t]
+            else:
+                next_value = values[t + 1] # compute v_t+1
+                next_non_terminal = 1.0 - dones[t]
+            
+            delta = rewards[t] + self.gamma * next_value * next_non_terminal - values[t]
+            A_GAE = delta + self.gamma * self.gae_lambda * next_non_terminal * A_GAE
+            advantages[t] = A_GAE
+            returns[t] = advantages[t] + values[t]
         ### END STUDENT SOLUTION - 1.2 ###
         
         return advantages, returns
@@ -155,7 +212,11 @@ class PPOAgent:
         
         # ---------------- Problem 1.1.1: PPO Clipped Surrogate Objective Loss ----------------
         ### BEGIN STUDENT SOLUTION - 1.1.1 ###
-
+        ratio = torch.exp(log_probs - old_log_probs) # probs in log space, so exp to get back to normal space
+        surr1 = ratio * advantages
+        surr2 = torch.clamp(ratio, 1.0 - self.clip_coef, 1.0 + self.clip_coef) * advantages
+        policy_loss = -torch.min(surr1, surr2).mean() # negative sign because we want gradient ascent to maximzie objective function
+        total_loss = policy_loss
         ### END STUDENT SOLUTION - 1.1.1 ###
         
         
@@ -168,7 +229,9 @@ class PPOAgent:
 
         # ---------------- Problem 1.1.2: PPO Total Loss (Include Entropy Bonus and Value Loss) ----------------
         ### BEGIN STUDENT SOLUTION - 1.1.2 ###
-
+        entropy_loss = -entropy.mean()  # negative sign because we want to maximize entropy  
+        value_loss = ((returns - values) ** 2).mean()
+        total_loss = total_loss + self.vf_coef * value_loss + self.ent_coef * entropy_loss 
         ### END STUDENT SOLUTION - 1.1.2 ###
 
         # Stats

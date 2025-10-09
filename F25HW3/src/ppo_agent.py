@@ -50,9 +50,9 @@ class PPOAgent:
     def act(self, obs):
         with torch.no_grad():
             obs_t = torch.as_tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
-            dist, value = self.actor(obs_t)
-            action = dist.sample()      
-            log_prob = dist.log_prob(action)
+            dist, value = self.actor(obs_t) # Query actor-crtic for action dist (a_t) and value (v_st)
+            action = dist.sample() # sample action from distribtuion      
+            log_prob = dist.log_prob(action) # save probability of action under the current policy (this function just maps the action to the log prob under the current distribution)
             
             return {
                 "action": action.squeeze(0).cpu().numpy(),
@@ -75,26 +75,28 @@ class PPOAgent:
         ret = {}
         # ---------------- Problem 1.3.1: PPO Update ----------------
         ### BEGIN STUDENT SOLUTION - 1.3.1 ###
-        if stop and self._steps_collected_with_curr_policy >= self.rollout_steps:
-            # Compute GAE and returns
+        if stop: 
+           
+            # Compute GAE and returns of current trajectory/rollout
             advantages, returns = self._compute_gae(self._curr_policy_rollout)
 
             # Prepare batch and store in rollout buffer
             batch = self._prepare_batch(advantages, returns)
 
             # Add to rollout buffer
-            self._rollout_buffer.add(batch)
+            self._rollout_buffer.add_batch(batch)
 
-            # Reset current rollout
-            self._curr_policy_rollout = []
-            self._steps_collected_with_curr_policy = 0
-            self._policy_iteration += 1
+            # Check if temp rollout buffer is full enough for update. I.e check if we have collected enough transitions with current policy before updating
+            if self._steps_collected_with_curr_policy >= self.rollout_steps:
+                # Perform PPO update
+                stats = self._perform_update()
+                ret.update(stats)
+
+                # Reset current rollout
+                self._curr_policy_rollout = []
+                self._steps_collected_with_curr_policy = 0
+                self._policy_iteration += 1
         
-        # Perform PPO update
-        if self._rollout_buffer.size > 0:
-            stats = self._perform_update()
-            ret.update(stats)
-
         ### END STUDENT SOLUTION - 1.3.1 ###
 
         return ret  # Leave this as an empty dictionary if no update is performed
@@ -112,7 +114,6 @@ class PPOAgent:
 
         # Sample minibatches and perform updates
         for epoch in range(self.update_epochs):
-
             # Shuffle and create minibatch
             minibatch = self._rollout_buffer.sample(
                 self.minibatch_size,
@@ -157,7 +158,7 @@ class PPOAgent:
         values = np.array([t["value"] for t in rollout])
         dones = np.array([t["done"] for t in rollout])  # Get done flag for each timestep
         
-        # Get the final value for bootstrap
+        # Get the final value for bootstrap (v_s_T)
         next_obs = rollout[-1]["next_obs"]
         with torch.no_grad():
             obs_t = torch.as_tensor(next_obs, dtype=torch.float32, device=self.device).unsqueeze(0)
@@ -172,17 +173,23 @@ class PPOAgent:
         A_GAE = 0
         for t in reversed(range(T)): 
             if t == T - 1:
-                # if last step, use final_v 
+                # if last step, use final_v (if it was to continue what would the value be? if end then its 0)
                 next_value = final_v
-                next_non_terminal = 1.0 - dones[t]
             else:
                 next_value = values[t + 1] # compute v_t+1
-                next_non_terminal = 1.0 - dones[t]
             
-            delta = rewards[t] + self.gamma * next_value * next_non_terminal - values[t]
-            A_GAE = delta + self.gamma * self.gae_lambda * next_non_terminal * A_GAE
+            next_non_terminal = 1.0 - dones[t]
+
+            # Here we estimate Gt ~ r_t + gamma * v_t+1 (typically estimate v_t+1 with a neural net)
+            delta = rewards[t] + self.gamma * next_value * next_non_terminal - values[t] # Here we comptute G_t using TD(1) to determine advantage
+            
+            # Delta is our one step estimate of advantage (i.e grounded with 1 step reward) but we need to apply a weight to it to "smooth" it out
+            A_GAE = delta + self.gamma * self.gae_lambda * next_non_terminal * A_GAE # note we can unroll this recursively so we get a better estimate of advantage as we go further back in time
+            # A_GAE makese sense because its just "expected" advantage and it gets more accurate as we go further back since we unroll more rewards
+
             advantages[t] = A_GAE
             returns[t] = advantages[t] + values[t]
+        
         ### END STUDENT SOLUTION - 1.2 ###
         
         return advantages, returns
@@ -230,7 +237,7 @@ class PPOAgent:
         # ---------------- Problem 1.1.2: PPO Total Loss (Include Entropy Bonus and Value Loss) ----------------
         ### BEGIN STUDENT SOLUTION - 1.1.2 ###
         entropy_loss = -entropy.mean()  # negative sign because we want to maximize entropy  
-        value_loss = ((returns - values) ** 2).mean()
+        value_loss =  ((returns - values) ** 2).mean()
         total_loss = total_loss + self.vf_coef * value_loss + self.ent_coef * entropy_loss 
         ### END STUDENT SOLUTION - 1.1.2 ###
 

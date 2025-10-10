@@ -460,6 +460,17 @@ python runner.py --agent ppo
 
 \begin{solution}[height=5cm]
 % TODO: Put your figures
+Training completed! Total steps: 1000000
+Total PPO updates: Final evaluation...
+Final performance: 226.3 ± 83.4
+Training Run Took: 0:17:15.642499
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/ppo_lunarlandercontinuous_v3/20251010-151726/training_curves.png}
+    \caption{Training curves for PPO on LunarLanderContinuous.}
+    \label{fig:ppo_curves}
+\end{figure}
+
 % YOUR SOLUTION
 \end{solution}
 
@@ -524,6 +535,12 @@ python runner.py --agent ppo --clip_coef 0.3
 
 \begin{solution}[height=5cm]
 % TODO: Put your figures
+Training completed! Total steps: 1000000
+Total PPO updates: 229
+Loaded best model from runs/ppo_lunarlandercontinuous_v3/20251010-162905/best.pt for final evaluation
+Final evaluation...
+Final performance: 217.3 ± 95.4
+
 % YOUR SOLUTION
 \end{solution}
 
@@ -537,6 +554,13 @@ python runner.py --agent ppo --clip_coef 0.05
 
 \begin{solution}[height=5cm]
 % TODO: Put your figures
+
+Training completed! Total steps: 1000000
+Total PPO updates: 227
+Loaded best model from runs/ppo_lunarlandercontinuous_v3/20251010-170124/best.pt for final evaluation
+Final evaluation...
+Final performance: 161.2 ± 137.9
+
 % YOUR SOLUTION
 \end{solution}
 

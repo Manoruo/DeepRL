@@ -117,8 +117,6 @@ class PPOAgent:
         half_on_policy_batch = {k: v[:len(v)//2] for k, v in on_policy_batch.items()}
         
         # combine half on-policy and half off-policy
-
-
         #full_batch = off_policy_batch
         ### EXPERIMENT 1.6 CODE END ###
         
@@ -233,7 +231,7 @@ class PPOAgent:
 
         # ---------------- Problem 1.4.2: KL Divergence Policy Loss ----------------
         ### BEGIN STUDENT SOLUTION - 1.4.2 ###
-        kl = (old_log_probs - log_probs).mean()  # or use true KL if possible
+        kl = (old_log_probs - log_probs).mean()  # KL divergence between old and new policy
         ratio = torch.exp(log_probs - old_log_probs)
         policy_loss = -(ratio * advantages).mean() + self.beta * kl
         ### END STUDENT SOLUTION - 1.4.2 ###

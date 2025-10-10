@@ -36,7 +36,32 @@ class SACAgent:
         
         # ================== Problem 3.1.1: SAC initialization ==================
         ### BEGIN STUDENT SOLUTION - 3.1.1 ###
-        
+        self.actor = Actor(
+            obs_dim=self.obs_dim,
+            act_dim=self.act_dim,
+            act_low=self.act_low,
+            act_high=self.act_high,
+            hidden=(64, 64),
+        ).to(self.device)
+
+        self.critic1 = Critic(
+            obs_dim=self.obs_dim,
+            act_dim=self.act_dim,
+            hidden=(64, 64)
+        ).to(self.device)
+
+        self.critic2 = Critic(
+            obs_dim=self.obs_dim,
+            act_dim=self.act_dim,
+            hidden=(64, 64)
+        ).to(self.device)
+
+        # Target networks
+        self.target1 = Critic(obs_dim=self.obs_dim, act_dim=self.act_dim, hidden=(64, 64)).to(self.device)
+        self.target1.load_state_dict(self.critic1.state_dict())
+        self.target2 = Critic(obs_dim=self.obs_dim, act_dim=self.act_dim, hidden=(64, 64)).to(self.device)
+        self.target2.load_state_dict(self.critic2.state_dict())
+
         ### END STUDENT SOLUTION  -  3.1.1 ###
         
         # Optimizers
@@ -101,7 +126,8 @@ class SACAgent:
         # Check if we should update
         # ---------------- Problem 3.2: Environment Step ----------------
         ### BEGIN STUDENT SOLUTION - 3.2 ###
-
+        if self._buffer.size < self.warmup_steps or self._buffer.size < self.batch_size:
+            return {}
         ### END STUDENT SOLUTION  -  3.2 ###
         
         # Perform SAC updates
@@ -137,31 +163,73 @@ class SACAgent:
         dones = batch["dones"]
         
         entropy = 0.0 # placeholder
-        current_q1 = torch.zeros_like((actions.shape[0],)) # placeholder
-        current_q2 = torch.zeros_like((actions.shape[0],)) # placeholder
-        target_q = torch.zeros_like((actions.shape[0],)) # placeholder
+        #current_q1 = torch.zeros_like((actions.shape[0],)) # placeholder
+        #current_q2 = torch.zeros_like((actions.shape[0],)) # placeholder
+        #target_q = torch.zeros_like((actions.shape[0],)) # placeholder
         actor_loss = torch.tensor(0.0) # placeholder
         
         # ---------------- Problem 3.1.2: Soft Bellman target ----------------
         ### BEGIN STUDENT SOLUTION - 3.1.2 ###
+        with torch.no_grad():
 
+            # query actor for next action and log prob
+            next_dist = self.actor(next_obs)
+            next_action = next_dist.rsample()
+            next_log_prob = next_dist.log_prob(next_action).sum(dim=-1, keepdim=True).clamp(-20, 20)
+
+            # take the min of the two target critics
+            target_q1 = self.target1(next_obs, next_action)
+            target_q2 = self.target2(next_obs, next_action)
+            target_q_min = torch.min(target_q1, target_q2)
+
+            # compute the soft bellman target
+            y = rewards + self.gamma * (1 - dones) * (target_q_min - self.alpha * next_log_prob)
+        entropy = -next_log_prob.mean() 
         ### END STUDENT SOLUTION  -  3.1.2 ###
         
         # ---------------- Problem 3.1.3: Critic update ----------------
         ### BEGIN STUDENT SOLUTION - 3.1.3 ###
+        current_q1 = self.critic1(obs, actions)
+        current_q2 = self.critic2(obs, actions)
+        target_q = y.detach()
+
+        # define critic loss
+        critic_loss = nn.functional.mse_loss(current_q1, target_q) + nn.functional.mse_loss(current_q2, target_q)
         
+        # optimize the critic
+        self.critic_opt.zero_grad()
+        critic_loss.backward()
+        self.critic_opt.step()
         ### END STUDENT SOLUTION  -  3.1.3 ###
         
         
         
         # ---------------- Problem 3.1.4: Actor update ----------------
         ### BEGIN STUDENT SOLUTION - 3.1.4 ###
-       
+
+        # query actor for action at current obs
+        a_dist = self.actor(obs)
+        sampled_action = a_dist.rsample()
+        log_prob = a_dist.log_prob(sampled_action).sum(dim=-1, keepdim=True).clamp(-20, 20)
+
+        
+        # compute q values
+        q1_pi = self.critic1(obs, sampled_action)
+        q2_pi = self.critic2(obs, sampled_action)
+        min_q_pi = torch.min(q1_pi, q2_pi)
+        actor_loss = (self.alpha * log_prob - min_q_pi).mean()
+
+        self.actor_opt.zero_grad()
+        actor_loss.backward()
+        nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1.0)
+        self.actor_opt.step()
+
         ### END STUDENT SOLUTION  -  3.1.4 ###
         
         # ---------------- Problem 3.1.5: Target soft-updates ---------------
         ### BEGIN STUDENT SOLUTION - 3.1.5 ###
-
+        self._soft_update(self.critic1, self.target1)
+        self._soft_update(self.critic2, self.target2)
         ### END STUDENT SOLUTION  -  3.1.5 ###
         
         # Return stats in format expected by runner
@@ -178,5 +246,7 @@ class SACAgent:
         """Soft update target network parameters"""
         # ---------------- Problem 3.1.5 Helper: Soft update implementation ----------------
         ### BEGIN STUDENT SOLUTION - 3.1.5 HELPER ###
-
+        with torch.no_grad():
+            for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+                target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data) 
         ### END STUDENT SOLUTION  -  3.1.5 HELPER ###

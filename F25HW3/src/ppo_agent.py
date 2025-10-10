@@ -109,42 +109,61 @@ class PPOAgent:
         # loss, stats = self._ppo_loss(minibatch)
         # all_stats.append(stats)
         
+        ### EXPERIMENT 1.6 CODE ###
+        
+        on_policy_batch = self._rollout_buffer.sample(self.rollout_steps, filter={"iteration": [self._policy_iteration]})
+        off_policy_batch = self._rollout_buffer.sample(self.rollout_steps)
+        half_off_policy_batch = {k: v[:len(v)//2] for k, v in off_policy_batch.items()}
+        half_on_policy_batch = {k: v[:len(v)//2] for k, v in on_policy_batch.items()}
+        
+        # combine half on-policy and half off-policy
+
+
+        #full_batch = off_policy_batch
+        ### EXPERIMENT 1.6 CODE END ###
+        
         # ---------------- Problem 1.3.2: PPO Update ----------------
         ### BEGIN STUDENT SOLUTION - 1.3.2 ###
+        
+        # get full batch to break up latter
+        full_batch = on_policy_batch
+        
+        # normalize advantages
+        advantages = full_batch["advantages"]
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # Sample minibatches and perform updates
+        total_batches = np.ceil(self.rollout_steps / self.minibatch_size)
+
         for epoch in range(self.update_epochs):
-            # Shuffle and create minibatch
-            minibatch = self._rollout_buffer.sample(
-                self.minibatch_size,
-                filter={"iteration": [self._policy_iteration]}
-            )
+            # smarter way to sample minibatches 
+            total_batches = np.ceil(self.rollout_steps / self.minibatch_size)
+            perm = torch.randperm(len(full_batch["advantages"]), device=self.device)
+            for i in range(int(total_batches)):
+                
+                idxs = perm[i * self.minibatch_size : (i + 1) * self.minibatch_size]
 
-            # Normalize advantages (improves stability)
-            advantages = minibatch["advantages"]
-            norm_adv = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-            minibatch["advantages"] = norm_adv # replace with normalized advantages
+                minibatch = {k: v[idxs] for k, v in full_batch.items()}
 
-            # Compute loss and perform gradient step
-            loss, stats = self._ppo_loss(minibatch)
-            all_stats.append(stats)
-            self.optimizer.zero_grad()
-            loss.backward()
+                # Compute loss and perform gradient step
+                loss, stats = self._ppo_loss(minibatch)
+                all_stats.append(stats)
+                self.optimizer.zero_grad()
+                loss.backward()
 
-            # Gradient clipping for stability (even though surrogate clips, advantage can still be huge)
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
-            self.optimizer.step()
+                # Gradient clipping for stability (even though surrogate clips, advantage can still be huge)
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
+                self.optimizer.step()
 
-          # Ensure buffer is ready
-        ### EXPERIMENT 1.6 CODE ###
 
-        ### EXPERIMENT 1.6 CODE END ###
-    
         ### END STUDENT SOLUTION - 1.3.2 ###
         
         # ---------------- Problem 1.4.2: KL Divergence Beta Update ----------------
         ### BEGIN STUDENT SOLUTION - 1.4.2 ###
-
+        kl_aprox = np.mean([s["kl"] for s in all_stats])
+        if kl_aprox < self.target_kl / 1.5:
+            self.beta = self.beta / 2 
+        elif kl_aprox > self.target_kl * 1.5:
+            self.beta = self.beta * 2
         ### END STUDENT SOLUTION - 1.4.2 ###
         
         if all_stats:
@@ -201,7 +220,7 @@ class PPOAgent:
         old_log_probs = batch["log_probs"]
         advantages = batch["advantages"]
         returns = batch["returns"]
-
+        
         # Forward pass
         dist, values = self.actor(obs)
         log_probs = dist.log_prob(actions)
@@ -214,15 +233,17 @@ class PPOAgent:
 
         # ---------------- Problem 1.4.2: KL Divergence Policy Loss ----------------
         ### BEGIN STUDENT SOLUTION - 1.4.2 ###
-
+        kl = (old_log_probs - log_probs).mean()  # or use true KL if possible
+        ratio = torch.exp(log_probs - old_log_probs)
+        policy_loss = -(ratio * advantages).mean() + self.beta * kl
         ### END STUDENT SOLUTION - 1.4.2 ###
         
         # ---------------- Problem 1.1.1: PPO Clipped Surrogate Objective Loss ----------------
         ### BEGIN STUDENT SOLUTION - 1.1.1 ###
-        ratio = torch.exp(log_probs - old_log_probs) # probs in log space, so exp to get back to normal space
         surr1 = ratio * advantages
         surr2 = torch.clamp(ratio, 1.0 - self.clip_coef, 1.0 + self.clip_coef) * advantages
-        policy_loss = -torch.min(surr1, surr2).mean() # negative sign because we want gradient ascent to maximzie objective function
+        #policy_loss = -torch.min(surr1, surr2).mean() # negative sign because we want gradient ascent to maximzie objective function
+        
         total_loss = policy_loss
         ### END STUDENT SOLUTION - 1.1.1 ###
         

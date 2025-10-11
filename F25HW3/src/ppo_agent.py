@@ -129,7 +129,7 @@ class PPOAgent:
         advantages = full_batch["advantages"]
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         full_batch["advantages"] = advantages
-        
+
         total_batches = np.ceil(self.rollout_steps / self.minibatch_size)
 
         for epoch in range(self.update_epochs):
@@ -233,14 +233,14 @@ class PPOAgent:
         ### BEGIN STUDENT SOLUTION - 1.4.2 ###
         kl = (old_log_probs - log_probs).mean()  # KL divergence between old and new policy
         ratio = torch.exp(log_probs - old_log_probs)
-        policy_loss = -(ratio * advantages).mean() + self.beta * kl
+        #policy_loss = -(ratio * advantages).mean() + self.beta * kl
         ### END STUDENT SOLUTION - 1.4.2 ###
         
         # ---------------- Problem 1.1.1: PPO Clipped Surrogate Objective Loss ----------------
         ### BEGIN STUDENT SOLUTION - 1.1.1 ###
         surr1 = ratio * advantages
         surr2 = torch.clamp(ratio, 1.0 - self.clip_coef, 1.0 + self.clip_coef) * advantages
-        #policy_loss = -torch.min(surr1, surr2).mean() # negative sign because we want gradient ascent to maximzie objective function
+        policy_loss = -torch.min(surr1, surr2).mean() # negative sign because we want gradient ascent to maximzie objective function
         
         
         ### END STUDENT SOLUTION - 1.1.1 ###

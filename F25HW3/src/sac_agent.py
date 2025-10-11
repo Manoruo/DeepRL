@@ -184,7 +184,7 @@ class SACAgent:
 
             # compute the soft bellman target
             y = rewards + self.gamma * (1 - dones) * (target_q_min - self.alpha * next_log_prob)
-        entropy = -next_log_prob.mean() 
+        entropy = -next_log_prob.mean().item()
         ### END STUDENT SOLUTION  -  3.1.2 ###
         
         # ---------------- Problem 3.1.3: Critic update ----------------

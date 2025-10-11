@@ -7,7 +7,7 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{bm}
-\usepackage{minted}
+% \usepackage{minted}
 \usepackage{enumerate}
 \usepackage{fancyvrb}
 \usepackage{algorithm}
@@ -458,19 +458,13 @@ python runner.py --agent ppo
 \end{verbatim}
 
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=10cm]
 % TODO: Put your figures
-Training completed! Total steps: 1000000
-Total PPO updates: Final evaluation...
 Final performance: 226.3 ± 83.4
-Training Run Took: 0:17:15.642499
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.8\linewidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/ppo_lunarlandercontinuous_v3/20251010-151726/training_curves.png}
-    \caption{Training curves for PPO on LunarLanderContinuous.}
-    \label{fig:ppo_curves}
-\end{figure}
 
+ \centering
+    \includegraphics[width=0.6\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/ppo_lunarlandercontinuous_v3/20251010-151726 (PPO Default)/training_curves.png}
+    \label{fig:ppo_basic}
 % YOUR SOLUTION
 \end{solution}
 
@@ -512,6 +506,17 @@ python runner.py --agent ppo
 
 \begin{solution}[height=5cm]
 % TODO: Put your figures
+
+Final performance: 205.4 ± 101.8
+
+In my runs, using a KL penalty tends to produce more stable training, with smoother learning curves and fewer large oscillations. 
+In contrast, clipping allows the policy to achieve higher returns more quickly, 
+but at the cost of increased variance and occasional instability. 
+
+    \centering
+        \includegraphics[width=0.6\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/ppo_lunarlandercontinuous_v3/20251010-220451 (PPO KL Penalty)/training_curves.png}
+        \label{fig:ppo_kl}
+
 % YOUR SOLUTION
 \end{solution}
 
@@ -533,13 +538,15 @@ python runner.py --agent ppo --clip_coef 0.3
 \end{verbatim}
 
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=10cm]
 % TODO: Put your figures
-Training completed! Total steps: 1000000
-Total PPO updates: 229
-Loaded best model from runs/ppo_lunarlandercontinuous_v3/20251010-162905/best.pt for final evaluation
-Final evaluation...
 Final performance: 217.3 ± 95.4
+
+With a larger clipping threshold ($\epsilon = 0.3$), the policy can deviate more from the old policy, leading to faster but less stable learning. This increased flexibility allows greater exploration and potentially higher rewards, though with higher variance and oscillations in returns. As $\epsilon$ increases, PPO behaves more like the vanilla policy gradient method, trading stability for exploration and larger policy updates.
+
+ \centering
+    \includegraphics[width=0.6\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/ppo_lunarlandercontinuous_v3/20251010-162905 (PPO 0.3 clip)/training_curves.png}
+    \label{fig:ppo_clip_.3}
 
 % YOUR SOLUTION
 \end{solution}
@@ -552,15 +559,20 @@ Rerun training with a smaller clipping threshold ($0.05$). Insert the plots here
 python runner.py --agent ppo --clip_coef 0.05
 \end{verbatim}
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=12cm]
 % TODO: Put your figures
 
-Training completed! Total steps: 1000000
-Total PPO updates: 227
-Loaded best model from runs/ppo_lunarlandercontinuous_v3/20251010-170124/best.pt for final evaluation
-Final evaluation...
 Final performance: 161.2 ± 137.9
 
+With a smaller clipping threshold ($\epsilon = 0.05$), 
+the final returns were lower because updates are very conservative and 
+learning is slower. 
+The strong clipping reduces variance and keeps training stable, 
+but it also limits exploration and the policy’s ability to improve quickly. In higher-dimensional or more complex environments, this conservative behavior would likely hurt performance as the agent might not explore enough to find good strategies.
+ 
+\centering
+    \includegraphics[width=0.6\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/ppo_lunarlandercontinuous_v3/20251010-170124 (PPO clip 0.05)/training_curves.png}
+    \label{fig:ppo_clip_.05}
 % YOUR SOLUTION
 \end{solution}
 
@@ -579,8 +591,17 @@ Modify your sampling logic so that you pull a batch from the full dataset rather
 python runner.py --agent ppo
 \end{verbatim}
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=12cm]
 % TODO: Put your figures
+Final performance: -2.8 ± 195.6
+
+Using off-policy data makes training less stable since PPO assumes the samples come from the current policy old data throws that off and leads to noisy updates.
+That’s likely why the performance fluctuates so much compared to normal PPO. To fix this while still using off-policy data, I could limit how old the samples are so they're too different from the current policy.
+
+ \centering
+    \includegraphics[width=0.6\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/ppo_lunarlandercontinuous_v3/20251010-202244 (PPO off)/training_curves.png}
+    \label{fig:ppo_off}
+
 % YOUR SOLUTION
 \end{solution}
 \subsubsection*{Problem 1.6.2 - Half Off-Policy PPO}
@@ -591,8 +612,18 @@ Modify your sampling logic so that half of your batch is sampled from the full d
 python runner.py --agent ppo
 \end{verbatim}
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=10cm]
 % TODO: Put your figures
+Final performance: 184.7 ± 128.7
+
+Including more on-policy data makes training more stable since the updates are based on samples from the current policy, 
+reducing distribution mismatch and variance in gradients. 
+This leads to smoother learning and better overall returns. 
+The differences from section 1.6.1 likely come from using fresher, more consistent data instead of old off-policy samples.
+
+\centering
+    \includegraphics[width=0.6\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/ppo_lunarlandercontinuous_v3/20251010-194537 (PPO mixed)/training_curves.png}
+    \label{fig:ppo_mixed}
 % YOUR SOLUTION
 \end{solution}
 
@@ -867,8 +898,18 @@ Note - For TD3, you may not see positive returns until around 250000 iterations.
 python runner.py --agent td3 --total_steps 500000
 \end{verbatim}
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=10cm]
 % TODO: Put your figures
+
+NOTE: Was running out of memory on my machine, had to reduce total steps to 300000
+
+Final performance: 226.1 ± 60.6
+
+ \centering
+    \includegraphics[width=0.7\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/td3_lunarlandercontinuous_v3/20251010-223143 (TD3 OG)/training_curves.png}
+    \label{fig:td3_basic}
+
+\
 % YOUR SOLUTION
 \end{solution}
 
@@ -884,7 +925,22 @@ python runner.py --agent td3 --total_steps 500000 --policy_noise 0
 \end{verbatim}
 
 \begin{solution}[height=5cm]
+
+NOTE: Was running out of memory on my machine, had to reduce total steps to 300000
+
 % TODO: Put your figures
+
+Final performance: -45.3 ± 66.0
+\newline\newline
+When policy_noise = 0, target policy smoothing is disabled, so target actions are deterministic and the critic can overfit to sharp Q-value peaks. 
+This makes training less stable and can hurt performance. Adding noise normally smooths the targets, 
+reducing overestimation and improving stability.
+
+ \centering
+    \includegraphics[width=0.7\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/td3_lunarlandercontinuous_v3/20251010-225236 (TD3 PN0)/training_curves.png}
+    \label{fig:td3_pn0}
+
+
 % YOUR SOLUTION
 \end{solution}
 
@@ -900,8 +956,29 @@ python runner.py --agent td3 --total_steps 500000 --delay 1
 python runner.py --agent td3 --total_steps 500000 --delay 4
 \end{verbatim}
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=15cm]
 % TODO: Put your figures
+
+NOTE: Was running out of memory on my machine, had to reduce total steps to 300000
+
+NOTE: for policy delay = 4, training process got killed at 250000 steps due to memory issues
+\newline\newline
+With policy_delay = 1, the actor updates more often, speeding up learning but increasing variance. With policy_delay = 4, 
+updates are less frequent, giving the critics time to converge, which makes learning slower but more stable. Policy delay 
+balances learning speed and stability.
+\newline\newline
+Final performance: 184.9 ± 91.7 (policy delay = 1)
+
+ \centering
+    \includegraphics[width=0.7\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/td3_lunarlandercontinuous_v3/20251010-231201 (TD3 D1)/training_curves.png}
+    \label{fig:td3_d1}
+\newline\newline
+Final performance: -93.8 ± 19.8 (policy delay = 4) 
+ \centering
+    \includegraphics[width=0.7\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/td3_lunarlandercontinuous_v3/20251010-233123 (TD3 D4)/training_curves.png}
+    \label{fig:td3_d4}
+
+
 % YOUR SOLUTION
 \end{solution}
 
@@ -1064,8 +1141,11 @@ ing seeds) have been tested and are sufficient to achieve the expected performan
 python runner.py --agent sac --total_steps 500000
 \end{verbatim}
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=10cm]
 % TODO: Put your figures
+ \centering
+    \includegraphics[width=0.7\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/sac_norm_training_curve.png}
+    \label{fig:sac_norm}
 % YOUR SOLUTION
 \end{solution}
 
@@ -1078,8 +1158,25 @@ python runner.py --agent sac --total_steps 300000 --utd_ratio 2
 python runner.py --agent sac --total_steps 300000 --utd_ratio 4
 \end{verbatim}
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=15cm]
 % TODO: Put your figures
+
+Increasing --utd_ratio improves sample efficiency but can reduce stability. 
+With utd=2, learning is faster and still fairly stable, while utd=4 leads to instability.
+Overall, higher UTD ratios trade stability for efficiency and speed
+\newline\newline
+Final performance: 242.8 ± 70.6 (utd = 2)
+Training Run Took: 1:51:59.382648
+ \centering
+    \includegraphics[width=0.5\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/sac_lunarlandercontinuous_v3/20251011-035922 (utd2)/training_curves.png}
+    \label{fig:sac_utd2}
+
+Final performance: 242.9 ± 32.3 (utd = 4)
+Training Run Took: 1:42:03.280795
+ \centering
+    \includegraphics[width=0.5\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/sac_lunarlandercontinuous_v3/20251011-000158 (utd4)/training_curves.png}
+    \label{fig:sac_utd4}
+
 % YOUR SOLUTION
 \end{solution}
 
@@ -1092,9 +1189,20 @@ In \texttt{SACAgent.act()}, change the action generation to deterministic action
 python runner.py --agent sac --total_steps 500000
 \end{verbatim}
 
-\begin{solution}[height=5cm]
+\begin{solution}[height=15cm]
 % TODO: Put your figures
 % YOUR SOLUTION
+
+NOTE: Was running out of memory on my machine, had to reduce total steps to 300000
+\newline\newline
+Final performance: -4.9 ± 39.6
+\newline\newline
+When using deterministic actions (mean action), the policy loses its stochasticity and exploration capability.
+This leads to poorer performance compared to the baseline where actions are sampled from the policy distribution.
+
+ \centering
+    \includegraphics[width=0.7\textwidth]{/Users/manoruo/Desktop/CMU/Courses/Deep RL/F25HW3/src/runs/sac_determin_training_curves.png}
+    \label{fig:sac_deter}
 \end{solution}
 
 % \paragraph{What to report} Keep seeds and total steps fixed across conditions. Plot episode returns, actor/critic losses, Q-values, evaluation curves; discuss bias/variance and compute trade-offs.
@@ -1113,9 +1221,13 @@ python runner.py --agent sac --total_steps 500000
 
 \textbf{Feedback}: You can help the course staff improve the course by providing feedback. What was the most confusing part of this homework, and what would have made it less confusing?
 
-\begin{tcolorbox}[fit,height=10em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=12em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
             \begin{center}
             %YOUR SOLUTION HERE%
+            This homework was well-structured, however I found the PPO implementation to be difficult to follow at times as there were 
+            subtle important implementation details not mentioned in the pseudocode. I spent a considerable amount of time debugging this part.
+            I also ran into memory issues when running the TD3 and SAC experiments. My machine has 16GB of RAM, but I would find 
+            the process constantly getting killed due to high memory usage. I had to reduce the total steps to 300000 to get it to run.
             \end{center}
             \end{tcolorbox}\\
 
@@ -1125,7 +1237,7 @@ python runner.py --agent sac --total_steps 500000
 \begin{table}[H]
     \centering
     \begin{tabular}{r|c}
-        Alone &  \hspace{3em} %ANSWER HERE%
+        Alone &  \hspace{3em} 20 %ANSWER HERE%
         \\ \hline
         With teammates & \hspace{3em} %ANSWER HERE%
         \\ \hline

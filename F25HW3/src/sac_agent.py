@@ -89,7 +89,7 @@ class SACAgent:
             
             # ---------------- Problem 3.5: Deterministic Action ----------------
             ### BEGIN STUDENT SOLUTION - 3.5 ###
-            
+            action = dist.mean_action
             ### END STUDENT SOLUTION  -  3.5 ###
             # Clamp to environment bounds
             action = torch.clamp(action, self.act_low, self.act_high)
@@ -126,7 +126,7 @@ class SACAgent:
         # Check if we should update
         # ---------------- Problem 3.2: Environment Step ----------------
         ### BEGIN STUDENT SOLUTION - 3.2 ###
-        if self._buffer.size < self.warmup_steps or self._buffer.size < self.batch_size:
+        if self._buffer.size < self.warmup_steps or self._buffer.size < self.batch_size or self.total_steps % self.update_every != 0:
             return {}
         ### END STUDENT SOLUTION  -  3.2 ###
         
@@ -175,7 +175,7 @@ class SACAgent:
             # query actor for next action and log prob
             next_dist = self.actor(next_obs)
             next_action = next_dist.rsample()
-            next_log_prob = next_dist.log_prob(next_action).sum(dim=-1, keepdim=True).clamp(-20, 20)
+            next_log_prob = next_dist.log_prob(next_action).clamp(-20, 20)
 
             # take the min of the two target critics
             target_q1 = self.target1(next_obs, next_action)
@@ -191,14 +191,17 @@ class SACAgent:
         ### BEGIN STUDENT SOLUTION - 3.1.3 ###
         current_q1 = self.critic1(obs, actions)
         current_q2 = self.critic2(obs, actions)
-        target_q = y.detach()
 
         # define critic loss
-        critic_loss = nn.functional.mse_loss(current_q1, target_q) + nn.functional.mse_loss(current_q2, target_q)
+        critic_loss = nn.functional.mse_loss(current_q1, y) + nn.functional.mse_loss(current_q2, y)
         
         # optimize the critic
         self.critic_opt.zero_grad()
         critic_loss.backward()
+        nn.utils.clip_grad_norm_(
+            list(self.critic1.parameters()) + list(self.critic2.parameters()), 
+            max_norm=1.0
+        )
         self.critic_opt.step()
         ### END STUDENT SOLUTION  -  3.1.3 ###
         
@@ -210,7 +213,7 @@ class SACAgent:
         # query actor for action at current obs
         a_dist = self.actor(obs)
         sampled_action = a_dist.rsample()
-        log_prob = a_dist.log_prob(sampled_action).sum(dim=-1, keepdim=True).clamp(-20, 20)
+        log_prob = a_dist.log_prob(sampled_action).clamp(-20, 20)
 
         
         # compute q values
@@ -235,8 +238,8 @@ class SACAgent:
         # Return stats in format expected by runner
         return {
             "actor_loss": float(actor_loss.item()),
-            "critic1_loss": float(nn.functional.mse_loss(current_q1, target_q).item()),
-            "critic2_loss": float(nn.functional.mse_loss(current_q2, target_q).item()),
+            "critic1_loss": float(nn.functional.mse_loss(current_q1, y).item()),
+            "critic2_loss": float(nn.functional.mse_loss(current_q2, y).item()),
             "q1": float(current_q1.mean().item()),
             "q2": float(current_q2.mean().item()),
             "entropy": entropy

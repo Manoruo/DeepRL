@@ -113,11 +113,10 @@ class PPOAgent:
         
         on_policy_batch = self._rollout_buffer.sample(self.rollout_steps, filter={"iteration": [self._policy_iteration]})
         off_policy_batch = self._rollout_buffer.sample(self.rollout_steps)
+        
         half_off_policy_batch = {k: v[:len(v)//2] for k, v in off_policy_batch.items()}
         half_on_policy_batch = {k: v[:len(v)//2] for k, v in on_policy_batch.items()}
-        
-        # combine half on-policy and half off-policy
-        #full_batch = off_policy_batch
+        mix_batch = {k: torch.cat([half_on_policy_batch[k], half_off_policy_batch[k]], dim=0) for k in on_policy_batch.keys()}  
         ### EXPERIMENT 1.6 CODE END ###
         
         # ---------------- Problem 1.3.2: PPO Update ----------------
@@ -129,7 +128,8 @@ class PPOAgent:
         # normalize advantages
         advantages = full_batch["advantages"]
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-
+        full_batch["advantages"] = advantages
+        
         total_batches = np.ceil(self.rollout_steps / self.minibatch_size)
 
         for epoch in range(self.update_epochs):
@@ -242,7 +242,7 @@ class PPOAgent:
         surr2 = torch.clamp(ratio, 1.0 - self.clip_coef, 1.0 + self.clip_coef) * advantages
         #policy_loss = -torch.min(surr1, surr2).mean() # negative sign because we want gradient ascent to maximzie objective function
         
-        total_loss = policy_loss
+        
         ### END STUDENT SOLUTION - 1.1.1 ###
         
         
@@ -257,7 +257,7 @@ class PPOAgent:
         ### BEGIN STUDENT SOLUTION - 1.1.2 ###
         entropy_loss = -entropy.mean()  # negative sign because we want to maximize entropy  
         value_loss =  ((returns - values) ** 2).mean()
-        total_loss = total_loss + self.vf_coef * value_loss + self.ent_coef * entropy_loss 
+        total_loss = policy_loss + self.vf_coef * value_loss + self.ent_coef * entropy_loss 
         ### END STUDENT SOLUTION - 1.1.2 ###
 
         # Stats

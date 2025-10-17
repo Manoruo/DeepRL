@@ -130,14 +130,36 @@ class TrainDaggerBC:
         """
         # BEGIN STUDENT SOLUTION
         rewards = []
-        for step in range(num_trajectories_per_batch_collection):
-            pi_states, pi_old_actions, pi_timesteps, pi_ep_rewards, pi_rgbs = self.generate_trajectory(self.env, self.model)
-            pi_star_actions = [self.call_expert_policy(state) for state in pi_states]
+        new_states, new_actions, new_timesteps = [], [], []
+
+        # For n amount of trajectories 
+        for _ in range(num_trajectories_per_batch_collection):
+
+            # generate the full trajectory using current policy
+            pi_states, _, _, pi_ep_rewards, _ = self.generate_trajectory(self.env, self.model)
             
-            self.states.append(pi_states)
-            self.actions.append(pi_star_actions)
-            self.timesteps.append(np.arange(0, len(pi_states)))
-            rewards.append(pi_ep_rewards)
+            # Query expert for best action
+            pi_star_actions = [self.call_expert_policy(s) for s in pi_states]
+
+            # Store this to be augmented later
+            new_states.extend(pi_states)
+            new_actions.extend(pi_star_actions)
+            new_timesteps.extend(range(len(pi_states)))
+            rewards.append(sum(pi_ep_rewards))
+
+        # Convert new data to numpy arrays
+        new_states = np.array(new_states)
+        new_actions = np.array(new_actions)
+        new_timesteps = np.array(new_timesteps)
+
+        # Concatenate with existing arrays
+        if self.states is None:
+            self.states, self.actions, self.timesteps = new_states, new_actions, new_timesteps
+        else:
+            self.states = np.concatenate([self.states, new_states], axis=0)
+            self.actions = np.concatenate([self.actions, new_actions], axis=0)
+            self.timesteps = np.concatenate([self.timesteps, new_timesteps], axis=0)
+                
         # END STUDENT SOLUTION
 
         return rewards
@@ -192,50 +214,50 @@ class TrainDaggerBC:
         mean_rewards, median_rewards, max_rewards = [], [], []
         # BEGIN STUDENT SOLUTION
 
-        if self.mode == "BC":
-            
-            # Initialize wandb
-            if wandb_logging and wandb is not None:
-                wandb.init(project="bipedalwalker_bc", name=f"{self.mode}_training")
-                wandb.config.update({
-                    "batch_size": batch_size,
-                    "learning_rate": self.optimizer.param_groups[0]['lr'],
-                    "mode": self.mode,
-                    "device": self.device
-                })
+        # Initialize wandb
+        if wandb_logging and wandb is not None:
+            wandb.init(project=f"bipedalwalker_{self.mode}", name=f"{self.mode}_training")
+            wandb.config.update({
+                "batch_size": batch_size,
+                "learning_rate": self.optimizer.param_groups[0]['lr'],
+                "mode": self.mode,
+                "device": self.device
+            })
 
-            for step in tqdm(range(num_batch_collection_steps)):
+        for step in tqdm(range(num_batch_collection_steps)):
+            if self.mode == 'DAgger':
+                # Augment training data before we optimize on it
+                self.update_training_data(num_trajectories_per_batch_collection)
+
+            # For each batch collection step, we regress the model using trajectories from the policy we want to clone
+            for train_step in range(num_training_steps_per_batch_collection):
+                loss = self.training_step(batch_size)
+                index = step * num_training_steps_per_batch_collection + train_step
+                losses[index] = loss
                 
-                # For each batch collection step, we regress the model using trajectories from the policy we want to clone
-                for train_step in range(num_training_steps_per_batch_collection):
-                    loss = self.training_step(batch_size)
-                    index = step * num_training_steps_per_batch_collection + train_step
-                    losses[index] = loss
-                    
-                    # Print and save model if necessary
-                    if (train_step + 1) % print_every == 0:
-                        print(f"Batch {step+1} TrainStep {train_step+1}: loss {loss:.6f}")
+                # Print and save model if necessary
+                if (train_step + 1) % print_every == 0:
+                    print(f"Batch {step+1} TrainStep {train_step+1}: loss {loss:.6f}")
 
-                    if (train_step + 1) % save_every == 0:
-                        torch.save(self.model.state_dict(), f"{self.mode}_model_step_{index+1}.pt")
+                if (train_step + 1) % save_every == 0:
+                    torch.save(self.model.state_dict(), f"{self.mode}_model_step_{index+1}.pt")
 
 
-                # evaluate once per batch (i.e. every num_training_steps_per_batch_collection steps)
-                episode_returns = self.generate_trajectories(num_trajectories_per_batch_collection)
-                mean_rewards.append(np.mean(episode_returns))
-                median_rewards.append(np.median(episode_returns))
-                max_rewards.append(np.max(episode_returns))
+            # evaluate once per batch (i.e. every num_training_steps_per_batch_collection steps)
+            episode_returns = self.generate_trajectories(num_trajectories_per_batch_collection)
+            mean_rewards.append(np.mean(episode_returns))
+            median_rewards.append(np.median(episode_returns))
+            max_rewards.append(np.max(episode_returns))
 
-                if wandb_logging and wandb is not None:
-                    wandb.init(project="bipedalwalker_bc", name="BC_training")
-
-                    wandb.log({
-                        "loss": loss,
-                        "mean_reward": mean_rewards[-1],
-                        "median_reward": median_rewards[-1],
-                        "max_reward": max_rewards[-1],
-                        "step": index+1
-                    })
+            if wandb_logging and wandb is not None:
+                wandb.log({
+                    "loss": loss,
+                    "mean_reward": mean_rewards[-1],
+                    "median_reward": median_rewards[-1],
+                    "max_reward": max_rewards[-1],
+                    "step": index+1
+                })
+    
 
         # END STUDENT SOLUTION
         x_axis = np.arange(0, len(mean_rewards)) * num_training_steps_per_batch_collection
@@ -302,13 +324,38 @@ def run_training(dagger: bool):
     with open(f"data/actions_BC.pkl", "rb") as f:
         actions = pickle.load(f)
 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print("CUDA available:", torch.cuda.is_available())
+    print("Device:", device)
+    print("Torch CUDA version:", torch.version.cuda)
+    
     if dagger:
         # Load expert model
         expert_model = PolicyNet(24, 4)
         model_weights = torch.load(f"data/models/super_expert_PPO_model.pt", map_location=device)
         expert_model.load_state_dict(model_weights["PolicyNet"])
         # BEGIN STUDENT SOLUTION
-        trainer = TrainDaggerBC(...)
+
+        DAgger_model = SimpleNet(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            hidden_layer_dimension=128,
+            max_episode_length=1600,
+            device=device
+        )
+        optimizer = torch.optim.Adam(DAgger_model.parameters(), lr=1e-3, weight_decay=1e-3)     
+        trainer = TrainDaggerBC(env=env, 
+                                model=DAgger_model, 
+                                optimizer=optimizer, 
+                                states=states, 
+                                actions=actions, 
+                                expert_model=expert_model, 
+                                mode="DAgger", 
+                                device=device)        
+        trainer.train(num_batch_collection_steps=20, 
+                      num_training_steps_per_batch_collection=1000, 
+                      num_trajectories_per_batch_collection=20, 
+                      batch_size=128)
         # END STUDENT SOLUTION
         traj_reward = 0
         while traj_reward < 260:
@@ -318,11 +365,6 @@ def run_training(dagger: bool):
             imageio.mimsave(f'gifs_{trainer.mode}.gif', rgbs, fps=33)
     else:
         # BEGIN STUDENT SOLUTION
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print("CUDA available:", torch.cuda.is_available())
-        print("Device:", device)
-        print("Torch CUDA version:", torch.version.cuda)
-
         bc_model = SimpleNet(
             state_dim=env.observation_space.shape[0],
             action_dim=env.action_space.shape[0],
@@ -337,7 +379,6 @@ def run_training(dagger: bool):
                                 states=states, 
                                 actions=actions, 
                                 mode="BC", device=device)
-        
         trainer.train(num_batch_collection_steps=20, 
                       num_training_steps_per_batch_collection=1000, 
                       num_trajectories_per_batch_collection=20, 

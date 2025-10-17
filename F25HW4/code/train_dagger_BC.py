@@ -129,7 +129,15 @@ class TrainDaggerBC:
         NOTE: you should update self.states, self.actions, and self.timesteps in this function.
         """
         # BEGIN STUDENT SOLUTION
-
+        rewards = []
+        for step in range(num_trajectories_per_batch_collection):
+            pi_states, pi_old_actions, pi_timesteps, pi_ep_rewards, pi_rgbs = self.generate_trajectory(self.env, self.model)
+            pi_star_actions = [self.call_expert_policy(state) for state in pi_states]
+            
+            self.states.append(pi_states)
+            self.actions.append(pi_star_actions)
+            self.timesteps.append(np.arange(0, len(pi_states)))
+            rewards.append(pi_ep_rewards)
         # END STUDENT SOLUTION
 
         return rewards

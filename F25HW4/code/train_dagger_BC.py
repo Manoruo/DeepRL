@@ -146,8 +146,8 @@ class TrainDaggerBC:
         # BEGIN STUDENT SOLUTION
         rewards = []
         for _ in range(num_trajectories_per_batch_collection):
-            states, old_actions, timesteps, rewards_t, rgbs = self.generate_trajectory(self.env, self.model)
-            rewards.extend(rewards_t)
+            states, old_actions, timesteps, episode_returns, rgbs = self.generate_trajectory(self.env, self.model)
+            rewards.append(sum(episode_returns)) # get total reward for the tajectory
         
         # END STUDENT SOLUTION
 
@@ -183,21 +183,51 @@ class TrainDaggerBC:
         self.model.train()
         mean_rewards, median_rewards, max_rewards = [], [], []
         # BEGIN STUDENT SOLUTION
+
         if self.mode == "BC":
+            
+            # Initialize wandb
+            if wandb_logging and wandb is not None:
+                wandb.init(project="bipedalwalker_bc", name=f"{self.mode}_training")
+                wandb.config.update({
+                    "batch_size": batch_size,
+                    "learning_rate": self.optimizer.param_groups[0]['lr'],
+                    "mode": self.mode,
+                    "device": self.device
+                })
+
             for step in tqdm(range(num_batch_collection_steps)):
                 
                 # For each batch collection step, we regress the model using trajectories from the policy we want to clone
-                for train_step in tqdm(range(num_training_steps_per_batch_collection)):
+                for train_step in range(num_training_steps_per_batch_collection):
                     loss = self.training_step(batch_size)
                     index = step * num_training_steps_per_batch_collection + train_step
                     losses[index] = loss
                     
-                    # Collect rewards every num_training_steps_per_batch 
-                    rewards = self.generate_trajectories(num_trajectories_per_batch_collection)
-                    mean_rewards.append(np.mean(rewards))
-                    median_rewards.append(np.median(rewards))
-                    max_rewards.append(np.max(rewards))
+                    # Print and save model if necessary
+                    if (train_step + 1) % print_every == 0:
+                        print(f"Batch {step+1} TrainStep {train_step+1}: loss {loss:.6f}")
 
+                    if (train_step + 1) % save_every == 0:
+                        torch.save(self.model.state_dict(), f"{self.mode}_model_step_{index+1}.pt")
+
+
+                # evaluate once per batch (i.e. every num_training_steps_per_batch_collection steps)
+                episode_returns = self.generate_trajectories(num_trajectories_per_batch_collection)
+                mean_rewards.append(np.mean(episode_returns))
+                median_rewards.append(np.median(episode_returns))
+                max_rewards.append(np.max(episode_returns))
+
+                if wandb_logging and wandb is not None:
+                    wandb.init(project="bipedalwalker_bc", name="BC_training")
+
+                    wandb.log({
+                        "loss": loss,
+                        "mean_reward": mean_rewards[-1],
+                        "median_reward": median_rewards[-1],
+                        "max_reward": max_rewards[-1],
+                        "step": index+1
+                    })
 
         # END STUDENT SOLUTION
         x_axis = np.arange(0, len(mean_rewards)) * num_training_steps_per_batch_collection
@@ -280,11 +310,17 @@ def run_training(dagger: bool):
             imageio.mimsave(f'gifs_{trainer.mode}.gif', rgbs, fps=33)
     else:
         # BEGIN STUDENT SOLUTION
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print("CUDA available:", torch.cuda.is_available())
+        print("Device:", device)
+        print("Torch CUDA version:", torch.version.cuda)
+
         bc_model = SimpleNet(
             state_dim=env.observation_space.shape[0],
             action_dim=env.action_space.shape[0],
             hidden_layer_dimension=128,
             max_episode_length=1600,
+            device=device
         )
         optimizer = torch.optim.Adam(bc_model.parameters(), lr=1e-3, weight_decay=1e-3)     
         trainer = TrainDaggerBC(env=env, 
@@ -292,9 +328,12 @@ def run_training(dagger: bool):
                                 optimizer=optimizer, 
                                 states=states, 
                                 actions=actions, 
-                                mode="BC")
+                                mode="BC", device=device)
         
-        trainer.train(batch_size=128)
+        trainer.train(num_batch_collection_steps=20, 
+                      num_training_steps_per_batch_collection=1000, 
+                      num_trajectories_per_batch_collection=20, 
+                      batch_size=128)
     
         # END STUDENT SOLUTION
         traj_reward = 1

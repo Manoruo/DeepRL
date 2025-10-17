@@ -144,7 +144,11 @@ class TrainDaggerBC:
         NOTE: you will need to call self.generate_trajectory in this function.
         """
         # BEGIN STUDENT SOLUTION
-
+        rewards = []
+        for _ in range(num_trajectories_per_batch_collection):
+            states, old_actions, timesteps, rewards_t, rgbs = self.generate_trajectory(self.env, self.model)
+            rewards.extend(rewards_t)
+        
         # END STUDENT SOLUTION
 
         return rewards
@@ -179,6 +183,21 @@ class TrainDaggerBC:
         self.model.train()
         mean_rewards, median_rewards, max_rewards = [], [], []
         # BEGIN STUDENT SOLUTION
+        if self.mode == "BC":
+            for step in tqdm(range(num_batch_collection_steps)):
+                
+                # For each batch collection step, we regress the model using trajectories from the policy we want to clone
+                for train_step in tqdm(range(num_training_steps_per_batch_collection)):
+                    loss = self.training_step(batch_size)
+                    index = step * num_training_steps_per_batch_collection + train_step
+                    losses[index] = loss
+                    
+                    # Collect rewards every num_training_steps_per_batch 
+                    rewards = self.generate_trajectories(num_trajectories_per_batch_collection)
+                    mean_rewards.append(np.mean(rewards))
+                    median_rewards.append(np.median(rewards))
+                    max_rewards.append(np.max(rewards))
+
 
         # END STUDENT SOLUTION
         x_axis = np.arange(0, len(mean_rewards)) * num_training_steps_per_batch_collection
@@ -261,7 +280,22 @@ def run_training(dagger: bool):
             imageio.mimsave(f'gifs_{trainer.mode}.gif', rgbs, fps=33)
     else:
         # BEGIN STUDENT SOLUTION
-        trainer = TrainDaggerBC(...)
+        bc_model = SimpleNet(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            hidden_layer_dimension=128,
+            max_episode_length=1600,
+        )
+        optimizer = torch.optim.Adam(bc_model.parameters(), lr=1e-3, weight_decay=1e-3)     
+        trainer = TrainDaggerBC(env=env, 
+                                model=bc_model, 
+                                optimizer=optimizer, 
+                                states=states, 
+                                actions=actions, 
+                                mode="BC")
+        
+        trainer.train(batch_size=128)
+    
         # END STUDENT SOLUTION
         traj_reward = 1
         while traj_reward > 0:

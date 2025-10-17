@@ -343,7 +343,7 @@ def run_training(dagger: bool):
             max_episode_length=1600,
             device=device
         )
-        optimizer = torch.optim.Adam(DAgger_model.parameters(), lr=1e-3, weight_decay=1e-3)     
+        optimizer = torch.optim.AdamW(DAgger_model.parameters(), lr=1e-3, weight_decay=1e-3)     
         trainer = TrainDaggerBC(env=env, 
                                 model=DAgger_model, 
                                 optimizer=optimizer, 
@@ -372,7 +372,7 @@ def run_training(dagger: bool):
             max_episode_length=1600,
             device=device
         )
-        optimizer = torch.optim.Adam(bc_model.parameters(), lr=1e-3, weight_decay=1e-3)     
+        optimizer = torch.optim.AdamW(bc_model.parameters(), lr=1e-3, weight_decay=1e-3)     
         trainer = TrainDaggerBC(env=env, 
                                 model=bc_model, 
                                 optimizer=optimizer, 

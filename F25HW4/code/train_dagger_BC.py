@@ -385,8 +385,8 @@ def run_training(dagger: bool):
                       batch_size=128)
     
         # END STUDENT SOLUTION
-        traj_reward = 0
-        while traj_reward < 260:
+        traj_reward = 1
+        while traj_reward > 0:
             _, _, _, rewards, rgbs = trainer.generate_trajectory(trainer.env, trainer.model, render=True)
             traj_reward = sum(rewards)
             print(f"got trajectory with reward {traj_reward}")

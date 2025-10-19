@@ -137,7 +137,7 @@ class TrainDiffusionPolicy:
         timesteps = self.get_inference_timesteps()
        
         for t in timesteps:
-            noise_levels = t.unsqueeze(0).unsqueeze(0)
+            noise_levels = torch.full((batch_size, 1), t, device=self.device)
             #print("Prev s", previous_states.shape, "prev act", previous_actions.shape)
             #print("nosy action", current_noisy_action.shape, "Ep", episode_timesteps.shape)
             #print("noise level", noise_levels.shape)
@@ -156,10 +156,8 @@ class TrainDiffusionPolicy:
                 actions_padding_mask)
             
             # denoise using this believed starting noise at t and move to t-1 
-            step_output = self.inference_scheduler.step(epsilon_pred, noise_levels, current_noisy_action)
-            current_noisy_action = step_output.prev_sample
-            current_noisy_action = torch.clip(current_noisy_action, -self.clip_sample_range, self.clip_sample_range)
-        
+            step_output = self.inference_scheduler.step(epsilon_pred, t.item(), current_noisy_action)
+            current_noisy_action = step_output.prev_sample        
         # END STUDENT SOLUTION
         return current_noisy_action
 
@@ -195,19 +193,21 @@ class TrainDiffusionPolicy:
 
         # Normalize initial state
         state_norm = (state - self.states_mean) / self.states_std
-        
         state_seq = [torch.tensor(state_norm, device=self.device)]
         action_seq = []
         episode_timestep = [0]
         done = False 
         truncated = False 
 
+        # Get padded action and state objects
         state_dim = env.observation_space.shape
         action_dim = env.action_space.shape
         dummy_state = torch.zeros(state_dim, device=self.device)  # normalized dummy
         dummy_action = torch.zeros(action_dim, device=self.device)  # normalized dummy
 
         while not done and not truncated:
+
+            # create padded input for our model
             prev_state_padding, prev_action_padding = [False] * num_previous_states, [False] * num_previous_actions
             action_padding = [False] * num_actions_to_eval_in_a_row
 
@@ -228,11 +228,13 @@ class TrainDiffusionPolicy:
             # Pad actions at the end if near the trajectory limit
             if episode_timestep[-1] > self.max_trajectory_length - num_actions_to_eval_in_a_row:
                 steps_till_end = self.max_trajectory_length - episode_timestep[-1]
-                padding_needed = steps_till_end - num_actions_to_eval_in_a_row
+                padding_needed = num_actions_to_eval_in_a_row - steps_till_end 
                 if padding_needed < 0:
                     # add as much padding as necessary. Note Padding_needed will be negative so we can use this to index
-                    action_padding[padding_needed:] = True
-
+                    for i in range(padding_needed, 0, -1):
+                        action_padding[i - 1] = True
+            
+            # add padding for episode 
             if len(episode_timestep) < num_previous_states:
                 padded_episode_timestep = [0] * (num_previous_states - len(episode_timestep)) + episode_timestep
             else:
@@ -260,14 +262,13 @@ class TrainDiffusionPolicy:
 
             # Denormalize predicted actions before env step
             denorm_actions = normalized_actions.cpu().numpy() * self.actions_std + self.actions_mean
-            denorm_actions = np.clip(denorm_actions, -self.clip_sample_range, self.clip_sample_range)
 
             # Step environment for each predicted action
            
             for i in range(num_actions_to_eval_in_a_row):
                 action_to_take = denorm_actions[0, i]
                 new_state, r, done, truncated, _ = env.step(action_to_take)
-                rewards[episode_timestep[-1] + 1] = r
+                rewards[step] = r
                 
                 if render:
                     rgb = env.render()
@@ -404,15 +405,6 @@ class TrainDiffusionPolicy:
 
         previous_states_batch, previous_actions_batch, actions_batch, episode_timesteps_batch, previous_states_padding_batch, previous_actions_padding_batch, actions_padding_batch = self.get_training_batch(batch_size, 
         max_action_len=3, num_previous_states=5, num_previous_actions=4)
-
-        #print("State size", previous_states_batch.shape)
-        #print("Action size", previous_actions_batch.shape)
-        #print("Timestep size", episode_timesteps_batch.shape) # Should be same size as state size
-        #print("Future actions GT", actions_batch.shape) # should be size of [max_future_actions, action_dim]
-        #print("Padding for States [beginning]", previous_states_padding_batch.shape)
-        #print("Padding for prev actions [beginning]", previous_actions_padding_batch.shape)
-        #print("Padding for future states [end]", actions_padding_batch.shape)
-        
         
        
         # think of this as pure noise, we will use this later to generate a sample thats something between this and the good signal
@@ -559,12 +551,12 @@ def run_training():
     optimizer = torch.optim.AdamW(policy.parameters(), lr=5e-5, weight_decay=1e-3)
 
     trainer = TrainDiffusionPolicy(env, policy, optimizer, states, actions, device=device, num_train_diffusion_timesteps=30, max_trajectory_length=1600)
-    trainer.train(num_training_steps=50000, batch_size=256)
+    #trainer.train(num_training_steps=50000, batch_size=256)
     # END STUDENT SOLUTION
     trainer.evaluation(num_samples=30)
     traj_reward = 0
     while traj_reward < 240:
-        rewards, rgbs = trainer.run_trajectory(trainer.env, num_actions_to_eval_in_a_row=3, render=True)
+        rewards, rgbs = trainer.sample_trajectory(trainer.env, num_actions_to_eval_in_a_row=3, render=True)
         traj_reward = rewards.sum()
         print(f"got trajectory with reward {traj_reward}")
     imageio.mimsave(f'gifs_diffusion.gif', rgbs, fps=33)

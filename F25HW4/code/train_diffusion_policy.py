@@ -128,7 +128,32 @@ class TrainDiffusionPolicy:
         NOTE: remember that you are predicting max_action_len actions, not just one
         """
         # BEGIN STUDENT SOLUTION
+        B = len(previous_states)
 
+        # Initialize pure noise (x_T)
+        predicted_actions = torch.randn(B, max_action_len, self.act_dim, device=self.device)
+        
+        # Get inference timesteps (decreasing order: T,...,1)
+        timesteps = self.get_inference_timesteps()
+        print(previous_states.shape, previous_actions.shape)
+        for t in timesteps:
+            noise_levels = t 
+
+            # predict the noise
+            epsilon_pred = self.model(
+                previous_states,
+                previous_actions,
+                predicted_actions,
+                episode_timesteps,
+                noise_levels,
+                previous_states_padding_mask,
+                previous_actions_padding_mask,
+                actions_padding_mask)
+            
+
+            # denoise at t and move to t-1 
+            predicted_actions = self.inference_scheduler.step(epsilon_pred, noise_levels, predicted_actions)
+    
         # END STUDENT SOLUTION
         return predicted_actions
 
@@ -157,9 +182,9 @@ class TrainDiffusionPolicy:
         """
         rewards, rgbs = np.zeros((self.max_trajectory_length,)), []
         # BEGIN STUDENT SOLUTION
-
+        
         # END STUDENT SOLUTION
-        return rewards,
+        return rewards, rgbs
 
     def evaluation(
         self,
@@ -268,6 +293,53 @@ class TrainDiffusionPolicy:
         """
         # BEGIN STUDENT SOLUTION
 
+        previous_states_batch, previous_actions_batch, actions_batch, episode_timesteps_batch, previous_states_padding_batch, previous_actions_padding_batch, actions_padding_batch = self.get_training_batch(batch_size, 
+        max_action_len=3, num_previous_states=5, num_previous_actions=4)
+
+        #print("State size", previous_states_batch.shape)
+        #print("Action size", previous_actions_batch.shape)
+        #print("Timestep size", episode_timesteps_batch.shape) # Should be same size as state size
+        #print("Future actions GT", actions_batch.shape) # should be size of [max_future_actions, action_dim]
+        #print("Padding for States [beginning]", previous_states_padding_batch.shape)
+        #print("Padding for prev actions [beginning]", previous_actions_padding_batch.shape)
+        #print("Padding for future states [end]", actions_padding_batch.shape)
+        
+        
+       
+        # think of this as pure noise, we will use this later to generate a sample thats something between this and the good signal
+        epsilon = torch.randn_like(actions_batch, device=self.device) 
+
+        # Now generate a different "Noise level" for each action so we can add to the "clean" action
+        T = self.num_train_diffusion_timesteps # max noise level (not to be confused with episode length)
+        
+        noise_levels = torch.randint(1, T, size=(len(actions_batch), ), device=self.device).unsqueeze(-1)
+        #print("Noise levels for each GT action", noise_levels.shape) # [batch, 1]
+
+        # Now we want to get a noisy aciton. But to do this, we want to base it on gaussian noise. So we do something like alpha blending
+        # we have the good action (actions_batch/img1) and the pure noise (epsilon/img2) we use alpha bar to make coefficents where alpha bar can be understood as how much of img1 we want
+        # we get something like blended = a x img1 + (1 - a) x img2 
+        noisy_actions = self.training_scheduler.add_noise(actions_batch, epsilon, noise_levels)
+        
+        #print("Nosy actions shape", noisy_actions.shape) # [batch, future_actions_len, action_dim]
+
+        # predict epsilon (pure noise that we started from) with our model
+        epsilon_pred = self.model(previous_states_batch,
+                                    previous_actions_batch,
+                                    noisy_actions, episode_timesteps_batch, noise_levels, 
+                                    previous_states_padding_batch, previous_actions_padding_batch, 
+                                    actions_padding_batch)
+
+        #print("Model prediction", epsilon_pred.shape) # [Batch_size, future_action, action_dim] --> predicts the original epsilon we started from
+        
+        # L2 error between what we think the starting noise was vs what it actually was.
+        loss = nn.functional.mse_loss(epsilon_pred, epsilon)
+        
+        # Take gradient and update weights
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        loss = loss.item()
+
         # END STUDENT SOLUTION
 
         return loss
@@ -373,7 +445,12 @@ def run_training():
     with open(f"data/actions_BC.pkl", "rb") as f:
         actions = pickle.load(f)
     # BEGIN STUDENT SOLUTION
-    trainer = TrainDiffusionPolicy(...)
+    device = 'cuda'
+    policy = PolicyDiffusionTransformer(state_dim=states.shape[-1], act_dim=actions.shape[-1], num_transformer_layers=6, hidden_size=128, n_transformer_heads=1, device=device)
+    optimizer = torch.optim.AdamW(policy.parameters(), lr=5e-5, weight_decay=1e-3)
+
+    trainer = TrainDiffusionPolicy(env, policy, optimizer, states, actions, device=device, num_train_diffusion_timesteps=30, max_trajectory_length=1600)
+    trainer.train(num_training_steps=50000, batch_size=256)
     # END STUDENT SOLUTION
     trainer.evaluation(num_samples=30)
     traj_reward = 0

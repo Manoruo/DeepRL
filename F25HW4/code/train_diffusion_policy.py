@@ -12,7 +12,7 @@ from PIL import Image
 from diffusers import DDPMScheduler, DDIMScheduler
 import time
 import matplotlib.pyplot as plt
-
+import imageio
 try:
     import wandb
 except ImportError:
@@ -128,34 +128,40 @@ class TrainDiffusionPolicy:
         NOTE: remember that you are predicting max_action_len actions, not just one
         """
         # BEGIN STUDENT SOLUTION
-        B = len(previous_states)
+        batch_size, num_prev_actions, action_dim = previous_actions.shape
 
         # Initialize pure noise (x_T)
-        predicted_actions = torch.randn(B, max_action_len, self.act_dim, device=self.device)
-        
-        # Get inference timesteps (decreasing order: T,...,1)
+        pure_noisy_actions = torch.randn(size=(batch_size, max_action_len, action_dim), device=self.device)
+        current_noisy_action = pure_noisy_actions
+        # Get inference timesteps (decreasing order: T,...,0)
         timesteps = self.get_inference_timesteps()
-        print(previous_states.shape, previous_actions.shape)
+       
         for t in timesteps:
-            noise_levels = t 
-
-            # predict the noise
+            noise_levels = t.unsqueeze(0).unsqueeze(0)
+            #print("Prev s", previous_states.shape, "prev act", previous_actions.shape)
+            #print("nosy action", current_noisy_action.shape, "Ep", episode_timesteps.shape)
+            #print("noise level", noise_levels.shape)
+            #print("prev state pad", previous_states_padding_mask.shape)
+            #print("prev act pad", previous_actions_padding_mask.shape)
+            #print("prev future pad", actions_padding_mask.shape)
+            # predict the starting noise given the curret noise and other conditions
             epsilon_pred = self.model(
                 previous_states,
                 previous_actions,
-                predicted_actions,
+                current_noisy_action,
                 episode_timesteps,
                 noise_levels,
                 previous_states_padding_mask,
                 previous_actions_padding_mask,
                 actions_padding_mask)
             
-
-            # denoise at t and move to t-1 
-            predicted_actions = self.inference_scheduler.step(epsilon_pred, noise_levels, predicted_actions)
-    
+            # denoise using this believed starting noise at t and move to t-1 
+            step_output = self.inference_scheduler.step(epsilon_pred, noise_levels, current_noisy_action)
+            current_noisy_action = step_output.prev_sample
+            current_noisy_action = torch.clip(current_noisy_action, -self.clip_sample_range, self.clip_sample_range)
+        
         # END STUDENT SOLUTION
-        return predicted_actions
+        return current_noisy_action
 
     def sample_trajectory(
         self, 
@@ -181,8 +187,110 @@ class TrainDiffusionPolicy:
         NOTE: refer to the forward function of diffusion_policy_transformer to see how to pass in the inputs (tensor shapes, etc.)
         """
         rewards, rgbs = np.zeros((self.max_trajectory_length,)), []
+        
         # BEGIN STUDENT SOLUTION
         
+        step = 0 
+        state, _ = env.reset()
+
+        # Normalize initial state
+        state_norm = (state - self.states_mean) / self.states_std
+        
+        state_seq = [torch.tensor(state_norm, device=self.device)]
+        action_seq = []
+        episode_timestep = [0]
+        done = False 
+        truncated = False 
+
+        state_dim = env.observation_space.shape
+        action_dim = env.action_space.shape
+        dummy_state = torch.zeros(state_dim, device=self.device)  # normalized dummy
+        dummy_action = torch.zeros(action_dim, device=self.device)  # normalized dummy
+
+        while not done and not truncated:
+            prev_state_padding, prev_action_padding = [False] * num_previous_states, [False] * num_previous_actions
+            action_padding = [False] * num_actions_to_eval_in_a_row
+
+            # Pad states & actions at start with dummy normalized tensors if needed
+            prev_state = list(state_seq)
+            prev_actions = list(action_seq)
+
+            if len(prev_state) < num_previous_states:
+                missing_states = num_previous_states - len(prev_state)
+                
+                # add padding for as much missing states/actions we need. Note states wil lbe size K and actions K - 1 
+                for i in range(missing_states):
+                    prev_state.insert(0, dummy_state)
+                    prev_state_padding[i] = True 
+                    prev_actions.insert(0, dummy_action)
+                    prev_action_padding[i] = True
+                
+            # Pad actions at the end if near the trajectory limit
+            if episode_timestep[-1] > self.max_trajectory_length - num_actions_to_eval_in_a_row:
+                steps_till_end = self.max_trajectory_length - episode_timestep[-1]
+                padding_needed = steps_till_end - num_actions_to_eval_in_a_row
+                if padding_needed < 0:
+                    # add as much padding as necessary. Note Padding_needed will be negative so we can use this to index
+                    action_padding[padding_needed:] = True
+
+            if len(episode_timestep) < num_previous_states:
+                padded_episode_timestep = [0] * (num_previous_states - len(episode_timestep)) + episode_timestep
+            else:
+                padded_episode_timestep = episode_timestep[-num_previous_states:]
+
+
+            # Convert lists to tensors
+            prev_state_tensor = torch.stack(prev_state).to(dtype=torch.float32, device=self.device).unsqueeze(0)
+            prev_actions_tensor = torch.stack(prev_actions).to(dtype=torch.float32, device=self.device).unsqueeze(0)
+            episode_time_tensor = torch.tensor(padded_episode_timestep, dtype=torch.long, device=self.device).unsqueeze(0)
+            prev_state_mask = torch.tensor(prev_state_padding, dtype=torch.bool, device=self.device).unsqueeze(0)
+            prev_action_mask = torch.tensor(prev_action_padding, dtype=torch.bool, device=self.device).unsqueeze(0)
+            action_padding_tensor = torch.tensor(action_padding, dtype=torch.bool, device=self.device).unsqueeze(0)
+
+            #print(prev_state_tensor.shape, prev_state_mask.shape)
+            #print(prev_actions_tensor.shape, prev_action_mask.shape)
+            #print(action_padding_tensor.shape)
+            #print(episode_time_tensor.shape)
+            # Diffusion sample model predicts normalized actions
+            with torch.no_grad():
+                normalized_actions = self.diffusion_sample(
+                    prev_state_tensor, prev_actions_tensor, episode_time_tensor,
+                    prev_state_mask, prev_action_mask, action_padding_tensor,
+                    max_action_len=num_actions_to_eval_in_a_row)
+
+            # Denormalize predicted actions before env step
+            denorm_actions = normalized_actions.cpu().numpy() * self.actions_std + self.actions_mean
+            denorm_actions = np.clip(denorm_actions, -self.clip_sample_range, self.clip_sample_range)
+
+            # Step environment for each predicted action
+           
+            for i in range(num_actions_to_eval_in_a_row):
+                action_to_take = denorm_actions[0, i]
+                new_state, r, done, truncated, _ = env.step(action_to_take)
+                rewards[episode_timestep[-1] + 1] = r
+                
+                if render:
+                    rgb = env.render()
+                    rgbs.append(rgb)
+
+                if done or truncated:
+                    return rewards, rgbs
+
+                # Normalize new state and append to history
+                new_state_norm = (new_state - self.states_mean) / self.states_std
+                new_action_norm = normalized_actions[0][i]
+
+                state_seq.append(torch.tensor(new_state_norm, device=self.device))
+                action_seq.append(torch.tensor(new_action_norm, device=self.device))
+                episode_timestep.append(episode_timestep[-1] + 1)
+                #print("EP", episode_tim)
+                step += 1
+                
+            # Keep context size fixed
+            state_seq = state_seq[-num_previous_states:]       
+            action_seq = action_seq[-num_previous_actions:]
+            episode_timestep = episode_timestep[-num_previous_states:]
+
         # END STUDENT SOLUTION
         return rewards, rgbs
 
@@ -217,6 +325,7 @@ class TrainDiffusionPolicy:
             reward, _ = self.sample_trajectory(self.env, num_actions_to_eval_in_a_row=num_actions_to_eval_in_a_row)
             time2 = time.time()
             print(f"trajectory {sample_trajectory} took {time2 - time1} seconds")
+            
             rewards[sample_trajectory] = reward
             print(f"rewards from trajectory {sample_trajectory}={reward.sum()}")
         print(f"average reward per trajectory={rewards.sum() / (rewards.shape[0])}")

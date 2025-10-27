@@ -65,18 +65,16 @@ class PENN(nn.Module):
         return mean, logvar
 
     def get_loss(self, targ, mean, logvar):
-        # TODO: write your code here
+        
+        # Compute inverse covariance (diagonal)
+        inv_var = torch.exp(-logvar) # Σ^{-1} 
 
-        # Get plain variance for future use
-        var = torch.exp(logvar)
+        diff = mean - targ # μ_θ(s_n, a_n) - s_{n+1}
+        first_term = torch.sum(diff * inv_var * diff, dim=-1)
 
-        # Use Gaussian-log-likelihood equation and take log of it to make easier
-        log_likelihood = -0.5 * logvar - 0.5 * (targ - mean) ** 2 / var
-
-        # We will optimize with respect to mu and sigma, we want to maximize this function at point x (targ) so make it negative so we do gradient ascent
-        negative_max_log_likelihood  = - log_likelihood
-
-        return negative_max_log_likelihood.mean() # get avg gradient
+        logdet = torch.sum(logvar, dim=-1) # log det Σ = sum log σ^2 (second term)
+        loss = first_term + logdet
+        return loss.mean()
 
     def create_network(self, n):
         layer_sizes = [
@@ -106,22 +104,20 @@ class PENN(nn.Module):
 
         """
         # TODO: write your code here
-        inputs = torch.tensor(inputs, dtype=torch.float32, device=self.device)
+        data = torch.tensor(inputs, dtype=torch.float32, device=self.device)
         targets = torch.tensor(targets, dtype=torch.float32, device=self.device)
 
         B = batch_size
         losses = np.zeros((num_train_itrs, self.num_nets)) 
         
-        
-
         for train_idx in range(num_train_itrs):
             for net_idx, network in enumerate(self.networks):
                 
                 # Uniformly sample with replacement 
-                random_indices = torch.randint(0, len(inputs), size=(B,), device=self.device)
+                random_indices = torch.randint(0, len(data), size=(B,), device=self.device)
                 
                 # Get Batch
-                mini_batch = inputs[random_indices]
+                mini_batch = data[random_indices]
                 mini_batch_targets = targets[random_indices]
 
                 # take gradient 

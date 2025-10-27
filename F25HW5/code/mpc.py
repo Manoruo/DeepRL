@@ -171,45 +171,36 @@ class MPC:
         states_t = torch.tensor(states, dtype=torch.float32, device=self.model.device)
         actions_t = torch.tensor(actions, dtype=torch.float32, device=self.model.device).repeat_interleave(self.num_particles, dim=0) # repeat the actions 
         inputs = torch.cat([states_t, actions_t], dim=1).to(self.model.device) 
-       
 
-        # Step 1: Initialize trajectory 
-        trajectories = torch.zeros((P, T+1, state_dim), device=self.model.device)
-        trajectories[:, 0, :] = states_t  # Set initial states
 
-        # Step 2: Sample TS1 sequences for each particle
-        S = torch.randint(0, N, (P, T)) # particle --> time step --> pick model
+        # init next state 
+        next_states = torch.zeros((P, state_dim), device=self.model.device)
 
-        # Step 3: Expand actions to match particles
-       
-        # Step 4: Rollout policy on each particle 
-        s_current = states_t.clone()
-        for t in range(T):
-            # Get model indices for this step
-            model_indices = S[:, t] # size: [P, 1]
+        # pick a boostrap for each particle
+        S = torch.randint(0, N, (P, )) 
 
-            # Predict delta for each model separately
-            delta = torch.zeros_like(s_current)
-            for model_idx, model in enumerate(self.model.networks):
-                mask = (model_indices == model_idx)
-                if mask.sum() == 0:
-                    continue
+        for model_idx, network in enumerate(self.model.networks):
+            mask = (S == model_idx)
+            
+            if mask.sum() == 0:
+                # no one stepping with current model
+                continue
+            
+            # pass corresponding inputs to our model
+            relevant_inputs = inputs[mask]
+            output = network(relevant_inputs)
+            delta, log_var = output[:, :8], output[:, 8:] # now split into mean and sigma
 
-                # pass corresponding inputs to our model
-                relevant_inputs = inputs[mask]
-                output = model(relevant_inputs)
-                mean, log_var = output[:, :8], output[:, 8:] # now split into mean and sigma
+            # compute next state (TA: Model outputs delta)
+            std = torch.exp(0.5 * log_var) # just sigma 
+            eps = torch.randn_like(std)
+            delta = delta + eps * std # sample using this delta
 
-                # compute delta
-                std = torch.exp(0.5 * log_var)
-                eps = torch.randn_like(std)
-                delta[mask] = mean + eps * std
+            next_state = states_t[mask] + delta # go to the next state by adding delta to current state 
 
-            # Update current state and store in trajectory
-            s_current = s_current + delta
-            trajectories[:, t+1, :] = s_current
+            next_states[mask] = next_state # save 
 
-        return trajectories.cpu().detach().numpy().mean(axis=1) # avg across all particles for a given trajectory
+        return next_states.cpu().detach().numpy() # avg across all particles for a given trajectory
 
     def predict_next_state_gt(self, states, actions):
         """Given a list of state action pairs, use the ground truth dynamics to predict the next state"""

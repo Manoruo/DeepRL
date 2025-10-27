@@ -15,7 +15,7 @@ class Agent:
         """
         rewards = []
         states, actions, reward_sum, done = [self.env.reset()], [], 0, False
-
+        
         policy.reset()
         for t in range(horizon):
             actions.append(policy.act(states[t], t))
@@ -26,7 +26,7 @@ class Agent:
             if done:
                 break
 
-        #print("Rollout length: %d,\tTotal reward: %d,\t Last reward: %d" % (len(actions), reward_sum), reward)
+        #print("Rollout length: {},\tTotal reward: {},\t Last reward: {}".format(len(actions), reward_sum, reward))
 
         return {
             "obs": np.array(states),

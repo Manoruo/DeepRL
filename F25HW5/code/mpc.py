@@ -168,13 +168,13 @@ class MPC:
         state_dim = states.shape[1]
         
         # Handle inputs
-        states_t = torch.tensor(states, dtype=torch.float32)
-        actions_t = torch.tensor(actions, dtype=torch.float32).repeat_interleave(self.num_particles, dim=0) # repeat the actions 
-        inputs = torch.cat([states_t, actions_t], dim=1) 
+        states_t = torch.tensor(states, dtype=torch.float32, device=self.model.device)
+        actions_t = torch.tensor(actions, dtype=torch.float32, device=self.model.device).repeat_interleave(self.num_particles, dim=0) # repeat the actions 
+        inputs = torch.cat([states_t, actions_t], dim=1).to(self.model.device) 
        
 
         # Step 1: Initialize trajectory 
-        trajectories = torch.zeros((P, T+1, state_dim))
+        trajectories = torch.zeros((P, T+1, state_dim), device=self.model.device)
         trajectories[:, 0, :] = states_t  # Set initial states
 
         # Step 2: Sample TS1 sequences for each particle
@@ -209,7 +209,7 @@ class MPC:
             s_current = s_current + delta
             trajectories[:, t+1, :] = s_current
 
-        return trajectories.detach().numpy().mean(axis=1) # avg across all particles for a given trajectory
+        return trajectories.cpu().detach().numpy().mean(axis=1) # avg across all particles for a given trajectory
 
     def predict_next_state_gt(self, states, actions):
         """Given a list of state action pairs, use the ground truth dynamics to predict the next state"""

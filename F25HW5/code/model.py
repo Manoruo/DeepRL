@@ -110,7 +110,7 @@ class PENN(nn.Module):
         targets = torch.tensor(targets, dtype=torch.float32, device=self.device)
 
         B = batch_size
-        losses = np.zeros((num_train_itrs, self.num_nets))
+        losses = np.zeros((num_train_itrs, self.num_nets)) 
         
         
 

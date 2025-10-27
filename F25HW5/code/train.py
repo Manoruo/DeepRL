@@ -73,7 +73,29 @@ class TrainerTD3:
     def get_synthetic_transition(self, state, action):
         # TODO: write your code here
         # randomly choose a network from ensemble and get new state from it
-        new_state = ...
+        print("Choosing random network")
+        # Randomly select a network from the ensemble
+        model_idx = torch.randint(0, self.model.num_nets, (1,)).item()
+        model = self.model.networks[model_idx]
+
+        # Convert state and action to tensors and add batch dimension
+        state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.model.device)
+        action_tensor = torch.tensor(action, dtype=torch.float32).unsqueeze(0).to(self.model.device)
+
+        # Concatenate state and action
+        sa_input = torch.cat([state_tensor, action_tensor], dim=1)
+
+        # Forward pass through selected model
+        output = model(sa_input)
+        mean, logvar = output[:, :self.model.state_dim], output[:, self.model.state_dim:]
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        delta = mean + eps * std
+
+        # Compute the next state
+        new_state = state_tensor + delta
+
+        
         return self.env.step_state(
             new_state.tolist()
         )  # pass in new state to the env for the full transition

@@ -26,7 +26,7 @@ class Agent:
             if done:
                 break
 
-        # print("Rollout length: %d,\tTotal reward: %d,\t Last reward: %d" % (len(actions), reward_sum), reward)
+        #print("Rollout length: %d,\tTotal reward: %d,\t Last reward: %d" % (len(actions), reward_sum), reward)
 
         return {
             "obs": np.array(states),

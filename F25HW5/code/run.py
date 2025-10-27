@@ -11,6 +11,8 @@ from agent import Agent, RandomPolicy
 from mpc import MPC
 from cem import CEMOptimizer
 from model import PENN
+import matplotlib
+matplotlib.rcParams['font.family'] = 'DejaVu Sans'
 
 # Logging
 now = config.Now()
@@ -101,15 +103,17 @@ class ExperimentModelDynamics:
         """
         traj_obs, traj_acs, traj_rews = [], [], []
 
+        # Collect a bunch of roll outs
         samples = []
         for i in range(num_episodes):
             if i == 0 or (i + 1) % 100 == 0: log.info("Warm up episode %d" % (i))
-            samples.append(self.agent.sample(self.task_horizon, self.random_policy))
+            samples.append(self.agent.sample(self.task_horizon, self.random_policy)) # get a roll out for random policy
 
             traj_obs.append(samples[-1]["obs"])
             traj_acs.append(samples[-1]["ac"])
             traj_rews.append(samples[-1]["rewards"])
 
+        # fit a network to these dynamics
         losses = self.cem_policy.train(
             [sample["obs"] for sample in samples],
             [sample["ac"] for sample in samples],
@@ -177,19 +181,19 @@ def test_cem_gt_dynamics(num_episode=50):
     mpc_params = {'use_mpc': False, 'num_particles': 1}
     exp = ExperimentGTDynamics(env_name="Pushing2D-v1", mpc_params=mpc_params)
     avg_reward, avg_success = exp.test(num_episode, optimizer="cem")
-    log.info("CEM PushingEnv: avg_reward: {}, avg_success: {}".format(avg_reward, avg_success))
+    log.info("CEM PushingEnv: avg_reward: {}, avg_success: {}".format(avg_reward, avg_success)) # fit CEM once then make a plan and go
 
     log.info("### Q1.1.2: Random Policy (without MPC)")
     mpc_params = {"use_mpc": False, "num_particles": 1}
     exp = ExperimentGTDynamics(env_name="Pushing2D-v1", mpc_params=mpc_params)
     avg_reward, avg_success = exp.test(num_episode, optimizer="random")
-    log.info("Random PushingEnv: avg_reward: {}, avg_success: {}".format(avg_reward, avg_success))
+    log.info("Random PushingEnv: avg_reward: {}, avg_success: {}".format(avg_reward, avg_success)) # make random plans, select the best and go
 
     log.info("### Q1.1.2: Random Policy + MPC")
     mpc_params = {"use_mpc": True, "num_particles": 1}
     exp = ExperimentGTDynamics(env_name="Pushing2D-v1", mpc_params=mpc_params)
     avg_reward, avg_success = exp.test(num_episode, optimizer="random")
-    log.info("Random + MPC PushingEnv: avg_reward: {}, avg_success: {}".format(avg_reward, avg_success))
+    log.info("Random + MPC PushingEnv: avg_reward: {}, avg_success: {}".format(avg_reward, avg_success)) # make random plan, select best, take one step and replan
 
     log.info("### Q1.1.3:")
     for env_name in ["Pushing2D-v1", "Pushing2DNoisyControl-v1"]:
@@ -197,14 +201,13 @@ def test_cem_gt_dynamics(num_episode=50):
         mpc_params = {"use_mpc": False, "num_particles": 1}
         exp = ExperimentGTDynamics(env_name=env_name, mpc_params=mpc_params)
         avg_reward, avg_success = exp.test(num_episode, optimizer="cem")
-        log.info("CEM {}: avg_reward: {}, avg_success: {}".format(env_name[:-3], avg_reward, avg_success))
+        log.info("CEM {}: avg_reward: {}, avg_success: {}".format(env_name[:-3], avg_reward, avg_success)) # fit CEM once then make a plan and go [Noisy Case - transitions are noisy, best plan will be hard/take longer to find]
 
         # CEM + MPC
         mpc_params = {"use_mpc": True, "num_particles": 1}
         exp = ExperimentGTDynamics(env_name=env_name, mpc_params=mpc_params)
         avg_reward, avg_success = exp.test(num_episode, optimizer="cem")
-        log.info("CEM + MPC {}: avg_reward: {}, avg_success: {}".format(env_name[:-3], avg_reward, avg_success))
-
+        log.info("CEM + MPC {}: avg_reward: {}, avg_success: {}".format(env_name[:-3], avg_reward, avg_success)) # fit CEM, take a step, revaluate / repeat [Noisy Case - good we have more steps to find a optimal plan]
 
 def plot_loss(losses, title, fpath):
     plt.figure(dpi=100)
@@ -225,7 +228,7 @@ def train_single_dynamics(num_test_episode=50, device=None):
     exp = ExperimentModelDynamics(env_name="Pushing2D-v1", num_nets=num_nets, mpc_params=mpc_params, device=device)
 
     log.info("### Q1.2.1: Train from 1000 randomly sampled episodes with 100 iterations")
-    losses = exp.model_warmup(num_episodes=num_episodes, num_train_itrs=num_train_itrs)
+    losses = exp.model_warmup(num_episodes=num_episodes, num_train_itrs=num_train_itrs) # first start by warming up / taking random rolls outs
     plot_loss(losses, '1.2.1: Single Network Training', 'out/1.2.1-loss.png')
 
     log.info("### Q1.2.2: Test with Random Policy for %d episodes" % num_test_episode)
@@ -271,6 +274,6 @@ if __name__ == "__main__":
     gpu_number = 0
     device = torch.device('cuda:%d' % gpu_number if torch.cuda.is_available() else 'cpu')
 
-    test_cem_gt_dynamics(50)    # Q1.1
+    #test_cem_gt_dynamics(50)    # Q1.1
     train_single_dynamics(50, device=device)   # Q1.2
-    train_pets(device=device)  # Q1.3
+    #train_pets(device=device)  # Q1.3

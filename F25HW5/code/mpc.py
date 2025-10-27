@@ -157,17 +157,69 @@ class MPC:
             :param states  : [self.popsize * self.num_particles, self.state_dim]
             :param actions : [self.popsize, self.action_dim]
         """
+        
         # TODO: write your code here
         # REMEMBER: model prediction is delta
         # Next state = delta sampled from model prediction + CURRENT state!
+        
+        P = len(states) # total number of particles
+        N = self.model.num_nets # num of models in ensemble
+        T = self.plan_horizon
+        state_dim = states.shape[1]
+        
+        # Handle inputs
+        states_t = torch.tensor(states, dtype=torch.float32)
+        actions_t = torch.tensor(actions, dtype=torch.float32).repeat_interleave(self.num_particles, dim=0) # repeat the actions 
+        inputs = torch.cat([states_t, actions_t], dim=1) 
+       
 
-        raise NotImplementedError
+        # Step 1: Initialize trajectory 
+        trajectories = torch.zeros((P, T+1, state_dim))
+        trajectories[:, 0, :] = states_t  # Set initial states
+
+        # Step 2: Sample TS1 sequences for each particle
+        S = torch.randint(0, N, (P, T)) # particle --> time step --> pick model
+
+        # Step 3: Expand actions to match particles
+       
+        # Step 4: Rollout policy on each particle 
+        s_current = states_t.clone()
+        for t in range(T):
+            # Get model indices for this step
+            model_indices = S[:, t] # size: [P, 1]
+
+            # Predict delta for each model separately
+            delta = torch.zeros_like(s_current)
+            for model_idx, model in enumerate(self.model.networks):
+                mask = (model_indices == model_idx)
+                if mask.sum() == 0:
+                    continue
+
+                # pass corresponding inputs to our model
+                relevant_inputs = inputs[mask]
+                output = model(relevant_inputs)
+                mean, log_var = output[:, :8], output[:, 8:] # now split into mean and sigma
+
+                # compute delta
+                std = torch.exp(0.5 * log_var)
+                eps = torch.randn_like(std)
+                delta[mask] = mean + eps * std
+
+            # Update current state and store in trajectory
+            s_current = s_current + delta
+            trajectories[:, t+1, :] = s_current
+
+        return trajectories.detach().numpy().mean(axis=1) # avg across all particles for a given trajectory
 
     def predict_next_state_gt(self, states, actions):
         """Given a list of state action pairs, use the ground truth dynamics to predict the next state"""
         # TODO: write your code here
+        next_states = []
 
-        raise NotImplementedError
+        for state, action in zip(states, actions):
+            next_state = self.env.get_nxt_state(state, action)
+            next_states.append(next_state)
+        return np.array(next_states)
 
     def train(self, obs_trajs, acs_trajs, rews_trajs, num_train_itrs=5):
         """
@@ -179,14 +231,18 @@ class MPC:
           num_train_itrs: number of iterations to train for
         """
         log.info("Train dynamics model with CEM for %d iterations" % num_train_itrs)
+
+        # create training data
         new_train_in, new_train_targs = [], []
         for obs, acs in zip(obs_trajs, acs_trajs):
             # input (state, action)
             new_train_in.append(np.concatenate([obs[:-1, 0:-2], acs], axis=-1))
-            # predict dynamics: f(s, a, phi)
+            # predict dynamics: f(s, a, phi) --> Note you are predicting delta 
             new_train_targs.append(obs[1:, 0:-2] - obs[:-1, 0:-2])
         self.train_in = np.concatenate([self.train_in] + new_train_in, axis=0)
         self.train_targs = np.concatenate([self.train_targs] + new_train_targs, axis=0)
+
+        # now fit a model to the dynamics
         loss = self.model.train_model(
             self.train_in, self.train_targs, num_train_itrs=num_train_itrs
         )
@@ -209,13 +265,15 @@ class MPC:
         """
 
         if not self.has_been_trained and not self.use_gt_dynamics:
-            # Use random policy in warmup stage (for Q1.2)
+            # Use random policy in warmup stage (for Q1.2); take a bunch of random roll outs to start
             return np.random.uniform(self.ac_lb, self.ac_ub, self.ac_lb.shape)
 
+        # roll out planned action sequence till complete
         if self.acs_buff.shape[0] > 0:
             action, self.acs_buff = self.acs_buff[0], self.acs_buff[1:]
             return action
 
+        # Go get a action sequence using mpc (fire then step) or open loop (fire then complete)
         self.curr_obs = state[0:-2]
         self.goal = state[-2:]
 
@@ -232,7 +290,7 @@ class MPC:
             self.prev_sol = np.concatenate(
                 [np.copy(soln)[self.action_dim :], np.zeros(self.action_dim)]
             )
-            # MPC: only use the first/next action planned
+            # MPC: only use the first/next action planned (the rest of the means will be 0 since we dont care)
             self.acs_buff = soln[: self.action_dim].reshape(-1, self.action_dim)
         else:
             # Otherwise, directly use CEM / Random Policy without MPC

@@ -67,7 +67,16 @@ class PENN(nn.Module):
     def get_loss(self, targ, mean, logvar):
         # TODO: write your code here
 
-        raise NotImplementedError
+        # Get plain variance for future use
+        var = torch.exp(logvar)
+
+        # Use Gaussian-log-likelihood equation and take log of it to make easier
+        log_likelihood = -0.5 * logvar - 0.5 * (targ - mean) ** 2 / var
+
+        # We will optimize with respect to mu and sigma, we want to maximize this function at point x (targ) so make it negative so we do gradient ascent
+        negative_max_log_likelihood  = - log_likelihood
+
+        return negative_max_log_likelihood.mean() # get avg gradient
 
     def create_network(self, n):
         layer_sizes = [
@@ -97,5 +106,35 @@ class PENN(nn.Module):
 
         """
         # TODO: write your code here
+        inputs = torch.tensor(inputs, dtype=torch.float32, device=self.device)
+        targets = torch.tensor(targets, dtype=torch.float32, device=self.device)
 
-        raise NotImplementedError
+        B = batch_size
+        losses = np.zeros((num_train_itrs, self.num_nets))
+        
+        
+
+        for train_idx in range(num_train_itrs):
+            for net_idx, network in enumerate(self.networks):
+                
+                # Uniformly sample with replacement 
+                random_indices = torch.randint(0, len(inputs), size=(B,), device=self.device)
+                
+                # Get Batch
+                mini_batch = inputs[random_indices]
+                mini_batch_targets = targets[random_indices]
+
+                # take gradient 
+                
+                output = network(mini_batch) # forward pass 
+                mean, logvar = self.get_output(output) # get into a useful format
+
+                self.opt.zero_grad() # prepare for backward
+                loss = self.get_loss(mini_batch_targets, mean, logvar)
+                loss.backward()
+                self.opt.step()
+
+                # Store result
+                losses[train_idx][net_idx] = loss.item()
+        
+        return losses.mean(axis=1)

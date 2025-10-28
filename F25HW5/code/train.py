@@ -74,13 +74,13 @@ class TrainerTD3:
         # TODO: write your code here
         # randomly choose a network from ensemble and get new state from it
         print("Choosing random network")
-        
+
         # randomly select a network from the ensemble
         model_idx = torch.randint(0, self.model.num_nets, (1,)).item()
         network = self.model.networks[model_idx]
 
         # convert state and action to tensors and add batch dimension, then concat
-        state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0).to(self.model.device)
+        state_tensor = torch.tensor(state[:-2], dtype=torch.float32).unsqueeze(0).to(self.model.device)
         action_tensor = torch.tensor(action, dtype=torch.float32).unsqueeze(0).to(self.model.device)
         inputs = torch.cat([state_tensor, action_tensor], dim=1)
 
@@ -95,7 +95,7 @@ class TrainerTD3:
 
         # Compute the next state
         new_state = state_tensor + delta
-        
+        new_state = new_state.squeeze() # get the state out
         return self.env.step_state(
             new_state.tolist()
         )  # pass in new state to the env for the full transition

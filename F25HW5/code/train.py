@@ -73,7 +73,6 @@ class TrainerTD3:
     def get_synthetic_transition(self, state, action):
         # TODO: write your code here
         # randomly choose a network from ensemble and get new state from it
-        print("Choosing random network")
 
         # randomly select a network from the ensemble
         model_idx = torch.randint(0, self.model.num_nets, (1,)).item()

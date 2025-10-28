@@ -105,37 +105,39 @@ Enter your team members' names and Andrew IDs in the boxes below. If you worked 
 Name 1: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{Andrew Jong}
     \end{center}
 \end{tcolorbox}
 Andrew ID 1: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{ajong}
     \end{center}
 \end{tcolorbox}
     \\
 Name 2: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{Gabe Olin}
     \end{center}
 \end{tcolorbox}
 Andrew ID 2: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
+    \large{golin}
     %solution
     \end{center}
 \end{tcolorbox} \\
 Name 3: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
-    \large{}
+    \large{Mike Anoruo}
     \end{center}
 \end{tcolorbox}
 Andrew ID 3: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
     \begin{center}
     \vspace{3mm}
+    \large{manoruo}
     %solution
     \end{center}
 \end{tcolorbox} \\
@@ -149,41 +151,44 @@ Andrew ID 3: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt
 \subsection*{1.1.1 CEM (without MPC) with ground-truth dynamics (10 pt)}
 
 Success percentage
-\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
 \begin{center}
-    %YOUR SOLUTION HERE%
+    \large{80\%}
 \end{center}
 \end{tcolorbox}
 
 \subsection*{1.1.2 Random sampling with ground-truth dynamics. (10 pt)}
 
 Success percentage without MPC 
-\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
 \begin{center}
-    %YOUR SOLUTION HERE%
+    \large{68\%}
 \end{center}
 \end{tcolorbox}
 
 Success percentage with MPC 
-\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
 \begin{center}
-    %YOUR SOLUTION HERE%
+    \large{84\%}
 \end{center}
 \end{tcolorbox}
 
 How does the performance of random sampling performance compare to that of CEM?
-\begin{tcolorbox}[fit,height=5em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=5em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
 \begin{center}
-    %YOUR SOLUTION HERE%
-\end{center}
+CEM performs better than random sampling in my experiments. CEM without MPC achieved an 80\% success rate, while random sampling without MPC only reached 68\%. With MPC, random sampling improves to 84\%, but CEM still outperforms it. This shows CEM’s iterative refinement helps find better action sequences, leading to higher success rates compared to random sampling.
+\end{center} 
 \end{tcolorbox}
 
 \subsection*{1.1.3 MPC vs. open-loop control (5 pt)}
 
-\begin{tcolorbox}[fit,height=20em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
-\begin{center}
+\begin{tcolorbox}[fit,height=20em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
     %YOUR SOLUTION HERE%
-\end{center}
+    \begin{center}
+        MPC performs better than open-loop control in dynamic/changing environments because it uses feedback from real time observations to correct its actions at each step. MPC adapts to disturbances and model inaccuracies by replanning continuously, making it a more robust algorithm. Open-loop control works better in stable/predictable environments where a precomputed action sequence is sufficient. 
+        \newline \newline
+        The pros of MPC include its ability to handle disturbances while optimizing future behavior; however, a con is that it comes with higher computational costs and relies on accurate modeling.
+    \end{center}
 \end{tcolorbox}
 
 
@@ -193,33 +198,39 @@ How does the performance of random sampling performance compare to that of CEM?
 
 \begin{tcolorbox}[fit,height=30em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
 \begin{center}
-    %YOUR SOLUTION HERE%
+   
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{1.2.1-loss.png}
+        \label{fig:placeholder}
+    \end{figure}
 \end{center}
 \end{tcolorbox}
 
 \subsection*{1.2.2 MPC with random sampling (10 pt)}
 
 Success percentage
-\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
 \begin{center}
-    %YOUR SOLUTION HERE%
+     \large{24\%}
 \end{center}
 \end{tcolorbox}
 
 \subsection*{1.2.3 MPC with CEM (10 pt)}
 
 Success percentage
-\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
 \begin{center}
-    %YOUR SOLUTION HERE%
+    \large{36\%}
 \end{center}
 \end{tcolorbox}
 
 \subsection*{1.2.4 Random sampling vs. CEM  (6 pt)}
 
-\begin{tcolorbox}[fit,height=15em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=15em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
 \begin{center}
-    %YOUR SOLUTION HERE%
+CEM outperforms random action by more intelligently selecting action sequences that lead to higher success rates. CEM + MPC didn't perform great in the recorded performance, achieving a success rate of only 36\%. However, on varying runs, it shows promise. The derived policy fails when it sees out-of-distribution state-action pairs. Our single probabilistic model starts to predict inaccurate transitions, and this error amplifies over longer horizons.
+  
 \end{center}
 \end{tcolorbox}
 
@@ -230,7 +241,11 @@ Success percentage
 
 \begin{tcolorbox}[fit,height=30em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
 \begin{center}
-    %YOUR SOLUTION HERE%
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{1.3.1-loss.png}
+        \label{fig:placeholder}
+    \end{figure}
 \end{center}
 \end{tcolorbox}
 
@@ -238,7 +253,11 @@ Success percentage
 
 \begin{tcolorbox}[fit,height=30em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
 \begin{center}
-    %YOUR SOLUTION HERE%
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{2-cem-vs-random-Success Rate.png}
+        \label{fig:placeholder}
+    \end{figure}
 \end{center}
 \end{tcolorbox}
 
@@ -247,7 +266,11 @@ Success percentage
 \subsection*{1.4.1 Ablation over model vs real data (10 pt)}
 \begin{tcolorbox}[fit,height=30em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
 \begin{center}
-    %YOUR SOLUTION HERE%
+     \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{1.4.1-synthetic_ratio_success_rate.png}
+        \label{fig:placeholder}
+    \end{figure}
 \end{center}
 \end{tcolorbox}
 
@@ -255,7 +278,11 @@ Success percentage
 
 \begin{tcolorbox}[fit,height=30em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
 \begin{center}
-    %YOUR SOLUTION HERE%
+     \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{1.4.2-rollout_length_success_rate.png}
+        \label{fig:placeholder}
+    \end{figure}
 \end{center}
 \end{tcolorbox}
 
@@ -263,15 +290,19 @@ Success percentage
 
 \begin{tcolorbox}[fit,height=30em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
 \begin{center}
-    %YOUR SOLUTION HERE%
+     \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.8\linewidth]{1.4.3-l2_error_rollout.png}
+        \label{fig:placeholder}
+    \end{figure}
 \end{center}
 \end{tcolorbox}
 
 \subsection*{1.4.4 MBRL vs Policy Gradient (5pt)}
 
-\begin{tcolorbox}[fit,height=30em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter]
+\begin{tcolorbox}[fit,height=30em, width=40em, blank, borderline={1pt}{1pt},nobeforeafter, valign=center]
 \begin{center}
-    %YOUR SOLUTION HERE%
+    MBRL is more preferable when sample efficiency and fast adaptation are important, as it uses a learned model to simulate and plan without excessive "real world" interaction. It also excels in tasks requiring planning and foresight. Policy gradients are preferred when modeling the environment is difficult or infeasible, especially in high-dimensional or complex action spaces.
 \end{center}
 \end{tcolorbox}
 
@@ -279,11 +310,15 @@ Success percentage
 \section*{Feedback}
 
 \textbf{Feedback}: You can help the course staff improve the course for future semesters by providing feedback. You will receive a point of you provide actionable feedback. What was the most confusing part of this homework, and what would have made it less confusing?
-\begin{solution}[height=4cm]
+\begin{solution}[height=4cm, valign=center]
+The documentation could be made a lot easier to follow with a clearer structure and consistent numbering. It sometimes felt confusing to jump between parts because it wasn’t always obvious how the sections connected. A bit more organization and a smoother flow could help.
 \end{solution}
 
 \textbf{Collaboration}: Detail the work division amongst your group below.
 \begin{solution}[height=4cm]
+
+All members contributed equally. We worked on different parts of the code separately, but regularly discussed and helped each other fix bugs. 
+
 \end{solution}
 
 \noindent\textbf{Time Spent}: How many hours did you spend working on this assignment? Your answer will not affect your grade. Please average your answer over all the members of your team.
@@ -291,13 +326,13 @@ Success percentage
 \begin{table}[H]
     \centering
     \begin{tabular}{r|c}
-        Alone &  \hspace{3em} %ANSWER HERE%
+        Alone &  \hspace{3em} 6
         \\ \hline
-        With teammates & \hspace{3em} %ANSWER HERE%
+        With teammates & \hspace{3em} 2
         \\ \hline
-        With other classmates & \hspace{3em} %ANSWER HERE%
+        With other classmates & \hspace{3em} 0
         \\ \hline
-        At office hours & \hspace{3em} %ANSWER HERE%
+        At office hours & \hspace{3em} 2
         \\ \hline
     \end{tabular}
 \end{table}

@@ -56,18 +56,15 @@ def get_buffer_and_environments_for_task(
                             obs_dim=dataset.observation_space.shape[0],
                             act_dim=dataset.action_space.shape[0],
                             device=device)
-    eps_indicies = dataset.episode_indices
-    eps_data = dataset.iterate_episodes(eps_indicies)
-
-    for episode in eps_data:
-        
+    
+    for episode in dataset:
         obs = episode.observations
         id = np.repeat(episode.id, len(obs))
         next_obs = obs[1:]
         actions = episode.actions 
         terminations = episode.terminations
         truncate = episode.truncations
-        info = episode.infos
+     
         rewards = torch.as_tensor(episode.rewards, dtype=torch.float32)
 
         batch = {

@@ -213,7 +213,8 @@ class TD3Agent:
                 # You can then inspect variables and step through the code.
                 breakpoint()
                 ### BEGIN STUDENT SOLUTION - 1.2 ###
-                raise NotImplementedError()  # Remove this line when implementing the solution
+                bc_loss = nn.functional.mse_loss(actions_pi, actions) # per hw
+                actor_loss += self.bc_regularization_weight * bc_loss
                 ### END STUDENT SOLUTION - 1.2 ###
 
             self.actor_opt.zero_grad()

@@ -38,7 +38,7 @@ def get_buffer_and_environments_for_task(
     offline_buffer = None
     eval_env = None
 
-    breakpoint()
+    #breakpoint()
 
     # ------ Problem 1.1: Loading the offline dataset into the replay buffer, creating the evaluation environment ------
     # You should reference the Minari documentation to load the offline dataset and create the evaluation environment.
@@ -50,7 +50,45 @@ def get_buffer_and_environments_for_task(
     # in pdb and inspect which fields are available with `p dir(object)`.
 
     ### BEGIN STUDENT SOLUTION - 1.1###
-    raise NotImplementedError("Student exercise: complete the code for Problem 1.1")
+    #$raise NotImplementedError("Student exercise: complete the code for Problem 1.1")
+    dataset = minari.load_dataset(minari_dataset_name) 
+    offline_buffer = Buffer(size=dataset.total_steps, 
+                            obs_dim=dataset.observation_space.shape[0],
+                            act_dim=dataset.action_space.shape[0],
+                            device=device)
+    eps_indicies = dataset.episode_indices
+    eps_data = dataset.iterate_episodes(eps_indicies)
+
+    for episode in eps_data:
+        
+        obs = episode.observations
+        id = np.repeat(episode.id, len(obs))
+        next_obs = obs[1:]
+        actions = episode.actions 
+        terminations = episode.terminations
+        truncate = episode.truncations
+        info = episode.infos
+        rewards = torch.as_tensor(episode.rewards, dtype=torch.float32)
+
+        batch = {
+            "obs": torch.as_tensor(obs[:-1], dtype=torch.float32),
+            "next_obs": torch.as_tensor(next_obs, dtype=torch.float32),
+            "actions": torch.as_tensor(actions, dtype=torch.float32),
+            "rewards": rewards,
+            "dones": torch.as_tensor(terminations | truncate, dtype=torch.bool),
+            "iteration": torch.as_tensor(id, dtype=torch.int64),
+
+            # Fill these in with zeros since we cant get them from dataset
+            "log_probs": torch.zeros_like(rewards),
+            "values": torch.zeros_like(rewards),
+            "advantages": torch.zeros_like(rewards),
+            "returns": torch.zeros_like(rewards),
+         
+        }
+        offline_buffer.add_batch(batch)
+        
+    eval_env = dataset.recover_environment(eval_env=True)
+    
     ### END STUDENT SOLUTION - 1.1###
 
     assert (

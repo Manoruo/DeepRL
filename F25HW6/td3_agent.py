@@ -211,9 +211,9 @@ class TD3Agent:
                 bc_loss = torch.zeros((), device=self.device)
                 # If the python interpreter reaches this line, it will open PDB.
                 # You can then inspect variables and step through the code.
-                breakpoint()
+                #breakpoint()
                 ### BEGIN STUDENT SOLUTION - 1.2 ###
-                bc_loss = nn.functional.mse_loss(actions_pi, actions) # per hw
+                bc_loss = ((actions - actions_pi) ** 2).sum(dim=1).mean() # per hw
                 actor_loss += self.bc_regularization_weight * bc_loss
                 ### END STUDENT SOLUTION - 1.2 ###
 
@@ -247,7 +247,7 @@ class TD3Agent:
         next_obs = batch["next_obs"]
         batch_size = obs.shape[0]
 
-        breakpoint()
+        #breakpoint()
         # Use these variable names so that the plots pick up on the values.
         cql_loss = torch.zeros((), device=self.device)
         current_action_q1_values = torch.zeros(
@@ -269,7 +269,91 @@ class TD3Agent:
         # Note: elf.cql_n_actions indicates how many random actions to sample for each element in the batch.
 
         ### BEGIN STUDENT SOLUTION - 2.1 ###
-        raise NotImplementedError()  # Remove this line when implementing the solution
+        #raise NotImplementedError()  # Remove this line when implementing the solution
+
+        # 1. Compute Q-values for the in-distribution actions (i.e., actions from the offline dataset).
+        q_pred = self.critic1(obs, batch["actions"])
+
+        ### 2. Sample random actions (uniformly from action space)
+        rand_actions = (
+            torch.rand(batch_size, self.cql_n_actions, self.act_dim, device=self.device)
+            * (self.act_high - self.act_low)
+            + self.act_low
+        ) # scale to action space # (N, cql_n_actions, action_dim)
+
+        # 3. Sample actions using current policy from both current and next observation
+        with torch.no_grad():
+            current_policy_actions = self.actor(obs).sample()
+            next_policy_actions = self.actor(next_obs).sample()
+
+        # 4. Compute Q-values for the sampled actions (in-distribution (already done), and random, current, next)
+        current_action_q1_values = self.critic1(obs, current_policy_actions)
+        next_action_q1_values = self.critic1(next_obs, next_policy_actions)
+        
+        # handle random actions seperately as for 1 state we have cql_n_actions random actions
+        for i in range(self.cql_n_actions):
+            rand_actions_i = rand_actions[:, i, :] # take whole batch, but only select ith random action 
+            random_action_q1_values[:, i] = self.critic1(obs, rand_actions_i) # set the q value for the action taken 
+        
+
+        # 5. Compute CQL loss using torch.logsumexp
+        all_q = torch.cat([
+            random_action_q1_values,                # (B, N)
+            current_action_q1_values.unsqueeze(1),  # (B, 1)
+            next_action_q1_values.unsqueeze(1),     # (B, 1)
+        ], dim=1)
+
+
+        # penalty term
+        base_penalty = torch.logsumexp(all_q, dim=1).mean()
+        good_qs = q_pred.mean()
+        cql_loss1 =  base_penalty - good_qs
+
+
+        # repeat steps for critic 2 
+        cql_loss2 = torch.zeros((), device=self.device)
+        current_action_q2_values = torch.zeros(
+            (batch_size, self.cql_n_actions), device=self.device
+        )
+        random_action_q2_values = torch.zeros(
+            (batch_size, self.cql_n_actions), device=self.device
+        )
+        q_pred2 = torch.zeros((batch_size,), device=self.device)
+
+        # 1. Compute Q-values for the in-distribution actions (i.e., actions from the offline dataset).
+        q_pred2 = self.critic2(obs, batch["actions"])
+
+        ### 2. Sample random actions (uniformly from action space)
+        # already done above
+
+        # 3. Sample actions using current policy from both current and next observation
+        # already done above
+
+        # 4. Compute Q-values for the sampled actions (in-distribution, and (random, current, next))
+        current_action_q2_values = self.critic2(obs, current_policy_actions)
+        next_action_q2_values = self.critic2(next_obs, next_policy_actions)
+        
+        # handle random actions seperately as for 1 state we have cql_n_actions random actions
+        for i in range(self.cql_n_actions):
+            rand_actions_i = rand_actions[:, i, :] # take whole batch, but only select ith random action 
+            random_action_q2_values[:, i] = self.critic2(obs, rand_actions_i) # set the q value for the action taken 
+        
+
+        # 5. Compute CQL loss using torch.logsumexp
+        all_q = torch.cat([
+            random_action_q2_values,                # (B, N)
+            current_action_q2_values.unsqueeze(1),  # (B, 1)
+            next_action_q2_values.unsqueeze(1),     # (B, 1)
+        ], dim=1)
+
+        # penalty term
+        base_penalty = torch.logsumexp(all_q, dim=1).mean()
+        good_qs = q_pred2.mean()
+        cql_loss2 =  base_penalty - good_qs
+
+        # final cql loss is sum of both critics
+        cql_loss = cql_loss1 + cql_loss2 
+
         ### END STUDENT SOLUTION - 2.1 ###
 
         return cql_loss, {

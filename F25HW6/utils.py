@@ -51,41 +51,30 @@ def get_buffer_and_environments_for_task(
 
     ### BEGIN STUDENT SOLUTION - 1.1###
     #$raise NotImplementedError("Student exercise: complete the code for Problem 1.1")
-    dataset = minari.load_dataset(minari_dataset_name) 
+    dataset = minari.load_dataset(minari_dataset_name)
+    eval_env = dataset.recover_environment(eval_env=True, render_mode="rgb_array") 
     offline_buffer = Buffer(size=dataset.total_steps, 
-                            obs_dim=dataset.observation_space.shape[0],
-                            act_dim=dataset.action_space.shape[0],
+                            obs_dim=np.prod(dataset.observation_space.shape),
+                            act_dim=np.prod(dataset.action_space.shape),
                             device=device)
     
     for episode in dataset:
-        obs = episode.observations
-        id = np.repeat(episode.id, len(obs))
-        next_obs = obs[1:]
-        actions = episode.actions 
-        terminations = episode.terminations
-        truncate = episode.truncations
-     
-        rewards = torch.as_tensor(episode.rewards, dtype=torch.float32)
-
+        episode_len = len(episode.rewards)
         batch = {
-            "obs": torch.as_tensor(obs[:-1], dtype=torch.float32),
-            "next_obs": torch.as_tensor(next_obs, dtype=torch.float32),
-            "actions": torch.as_tensor(actions, dtype=torch.float32),
-            "rewards": rewards,
-            "dones": torch.as_tensor(terminations | truncate, dtype=torch.bool),
-            "iteration": torch.as_tensor(id, dtype=torch.int64),
-
-            # Fill these in with zeros since we cant get them from dataset
-            "log_probs": torch.zeros_like(rewards),
-            "values": torch.zeros_like(rewards),
-            "advantages": torch.zeros_like(rewards),
-            "returns": torch.zeros_like(rewards),
-         
+            "obs": torch.as_tensor(episode.observations[:-1], dtype=torch.float32, device=device),
+            "next_obs": torch.as_tensor(episode.observations[1:], dtype=torch.float32, device=device),
+            "actions": torch.as_tensor(episode.actions, dtype=torch.float32, device=device),
+            "rewards": torch.as_tensor(episode.rewards, dtype=torch.float32, device=device),
+            "dones": torch.as_tensor(episode.terminations, dtype=torch.float32, device=device),
+        
+            # Fill these in with zeros since not used
+            "log_probs": torch.zeros((episode_len,), dtype=torch.float32, device=device),
+            "values": torch.zeros((episode_len,), dtype=torch.float32, device=device),
+            "advantages": torch.zeros((episode_len,), dtype=torch.float32, device=device),
+            "returns": torch.zeros((episode_len,), dtype=torch.float32, device=device),
+            "iteration": torch.zeros((episode_len,), dtype=torch.float32, device=device),
         }
         offline_buffer.add_batch(batch)
-        
-    eval_env = dataset.recover_environment(eval_env=True)
-    
     ### END STUDENT SOLUTION - 1.1###
 
     assert (
